@@ -1,9 +1,9 @@
 'use strict';
 /**
- * MarketOS — servidor.
- * Busca cotações (Yahoo Finance, AwesomeAPI, CoinGecko, alternative.me) e notícias (RSS de jornais),
- * calcula análise local, e usa a API da Anthropic (Claude) para análise e chat quando há chave.
- * Sem dependências: Node 18+.
+ * Zodam AI — servidor.
+ * Busca cotações (Yahoo Finance, AwesomeAPI, CoinGecko, alternative.me), clima (Open-Meteo) e
+ * notícias (RSS de jornais). A IA pode ser Gemini (grátis), Groq (grátis) ou Claude (pago).
+ * Sem dependências: Node 18+. Funciona local (node server.js) e na Vercel (pasta /api).
  */
 const http = require('http');
 const fs = require('fs');
@@ -17,9 +17,20 @@ try {
 } catch {}
 
 const PORT = Number(process.env.PORT) || 3000;
-const KEY = process.env.ANTHROPIC_API_KEY || '';
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
-const UA = 'Mozilla/5.0 (compatible; MarketOS/1.0)';
+const KEYS = {
+  gemini: process.env.GEMINI_API_KEY || '',
+  groq: process.env.GROQ_API_KEY || '',
+  anthropic: process.env.ANTHROPIC_API_KEY || '',
+};
+const MODELS = {
+  gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  groq: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+  anthropic: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
+};
+const wanted = (process.env.AI_PROVIDER || '').toLowerCase();
+// Ordem automática: opções gratuitas primeiro.
+const PROVIDER = wanted && KEYS[wanted] ? wanted : KEYS.gemini ? 'gemini' : KEYS.groq ? 'groq' : KEYS.anthropic ? 'anthropic' : '';
+const UA = 'Mozilla/5.0 (compatible; ZodamAI/1.0)';
 
 /* ---------- utilidades ---------- */
 const cache = new Map();
@@ -53,7 +64,7 @@ function pack(series, dates, source) {
   const price = series[n - 1];
   return { price, change: pct(price, series[n - 2]), change30d: n > 22 ? pct(price, series[n - 22]) : null, series, dates, source };
 }
-async function yahoo(sym) {
+async function yahoo(sym, scale = 1) {
   const j = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=6mo&interval=1d`);
   const r = j && j.chart && j.chart.result && j.chart.result[0];
   if (!r) throw new Error('Yahoo sem dados para ' + sym);
@@ -61,11 +72,11 @@ async function yahoo(sym) {
   const ts = r.timestamp || [];
   const series = [], dates = [];
   cl.forEach((v, i) => {
-    if (v != null) { series.push(v); dates.push(new Date(ts[i] * 1000).toISOString().slice(0, 10)); }
+    if (v != null) { series.push(v * scale); dates.push(new Date(ts[i] * 1000).toISOString().slice(0, 10)); }
   });
   if (series.length < 2) throw new Error('Série curta para ' + sym);
   const live = r.meta && r.meta.regularMarketPrice;
-  if (live != null) series[series.length - 1] = live;
+  if (live != null) series[series.length - 1] = live * scale;
   return pack(series, dates, 'Yahoo Finance');
 }
 async function awesome(pair) {
@@ -85,18 +96,20 @@ async function coingecko(id) {
 }
 
 const ASSETS = [
-  { id: 'usdbrl', name: 'Dólar (USD/BRL)', short: 'USD/BRL', group: 'Câmbio', unit: 'R$', yf: 'BRL=X', fb: () => awesome('USD-BRL') },
-  { id: 'eurbrl', name: 'Euro (EUR/BRL)', short: 'EUR/BRL', group: 'Câmbio', unit: 'R$', yf: 'EURBRL=X', fb: () => awesome('EUR-BRL') },
+  { id: 'usdbrl', name: 'Dólar (USD/BRL)', short: 'DÓLAR', group: 'Câmbio', unit: 'R$', yf: 'BRL=X', fb: () => awesome('USD-BRL') },
+  { id: 'eurbrl', name: 'Euro (EUR/BRL)', short: 'EURO', group: 'Câmbio', unit: 'R$', yf: 'EURBRL=X', fb: () => awesome('EUR-BRL') },
   { id: 'dxy', name: 'Índice Dólar (DXY)', short: 'DXY', group: 'Câmbio', unit: 'pts', yf: 'DX-Y.NYB' },
-  { id: 'gold', name: 'Ouro (oz)', short: 'OURO', group: 'Commodities', unit: 'US$', yf: 'GC=F' },
-  { id: 'silver', name: 'Prata (oz)', short: 'PRATA', group: 'Commodities', unit: 'US$', yf: 'SI=F' },
-  { id: 'wti', name: 'Petróleo WTI', short: 'WTI', group: 'Commodities', unit: 'US$', yf: 'CL=F' },
+  { id: 'gold', name: 'Ouro', short: 'OURO', group: 'Commodities', unit: 'US$', yf: 'GC=F' },
+  { id: 'silver', name: 'Prata', short: 'PRATA', group: 'Commodities', unit: 'US$', yf: 'SI=F' },
+  { id: 'wti', name: 'Petróleo WTI', short: 'PETRÓLEO WTI', group: 'Commodities', unit: 'US$', yf: 'CL=F' },
   { id: 'brent', name: 'Petróleo Brent', short: 'BRENT', group: 'Commodities', unit: 'US$', yf: 'BZ=F' },
-  { id: 'copper', name: 'Cobre (lb)', short: 'COBRE', group: 'Commodities', unit: 'US$', yf: 'HG=F' },
-  { id: 'btc', name: 'Bitcoin', short: 'BTC', group: 'Cripto', unit: 'US$', yf: 'BTC-USD', fb: () => coingecko('bitcoin') },
-  { id: 'eth', name: 'Ethereum', short: 'ETH', group: 'Cripto', unit: 'US$', yf: 'ETH-USD', fb: () => coingecko('ethereum') },
-  { id: 'ibov', name: 'Ibovespa', short: 'IBOV', group: 'Bolsas e juros', unit: 'pts', yf: '^BVSP' },
-  { id: 'spx', name: 'S&P 500', short: 'S&P', group: 'Bolsas e juros', unit: 'pts', yf: '^GSPC' },
+  { id: 'copper', name: 'Cobre', short: 'COBRE', group: 'Commodities', unit: 'US$', yf: 'HG=F' },
+  { id: 'soy', name: 'Soja', short: 'SOJA', group: 'Commodities', unit: 'US$', yf: 'ZS=F', scale: 0.01 },
+  { id: 'corn', name: 'Milho', short: 'MILHO', group: 'Commodities', unit: 'US$', yf: 'ZC=F', scale: 0.01 },
+  { id: 'btc', name: 'Bitcoin', short: 'BITCOIN', group: 'Cripto', unit: 'US$', yf: 'BTC-USD', fb: () => coingecko('bitcoin') },
+  { id: 'eth', name: 'Ethereum', short: 'ETHEREUM', group: 'Cripto', unit: 'US$', yf: 'ETH-USD', fb: () => coingecko('ethereum') },
+  { id: 'ibov', name: 'Ibovespa', short: 'IBOVESPA', group: 'Bolsas e juros', unit: 'pts', yf: '^BVSP' },
+  { id: 'spx', name: 'S&P 500', short: 'S&P 500', group: 'Bolsas e juros', unit: 'pts', yf: '^GSPC' },
   { id: 'ndx', name: 'Nasdaq', short: 'NASDAQ', group: 'Bolsas e juros', unit: 'pts', yf: '^IXIC' },
   { id: 'vix', name: 'VIX (volatilidade)', short: 'VIX', group: 'Bolsas e juros', unit: 'pts', yf: '^VIX' },
   { id: 'us10y', name: 'Juro EUA 10 anos', short: 'US10Y', group: 'Bolsas e juros', unit: '%', yf: '^TNX' },
@@ -106,7 +119,7 @@ async function fetchAsset(a) {
   const meta = { id: a.id, name: a.name, short: a.short, group: a.group, unit: a.unit };
   const errs = [];
   let r = null;
-  try { r = await yahoo(a.yf); } catch (e) { errs.push(e.message); }
+  try { r = await yahoo(a.yf, a.scale || 1); } catch (e) { errs.push(e.message); }
   if (!r && a.fb) { try { r = await a.fb(); } catch (e) { errs.push(e.message); } }
   return r ? { ...meta, ...r } : { ...meta, error: errs.join(' | ') };
 }
@@ -121,6 +134,26 @@ async function getMarkets(force) {
     const v = { updated: new Date().toISOString(), assets, fng };
     if (!assets.some((a) => a.price != null)) v.noCache = true;
     return v;
+  }, force);
+}
+
+/* ---------- clima ---------- */
+const CITIES = [
+  ['São Paulo', -23.55, -46.63], ['Nova York', 40.71, -74.01], ['Londres', 51.51, -0.13],
+  ['Tóquio', 35.68, 139.69], ['Pequim', 39.9, 116.41], ['Dubai', 25.2, 55.27],
+];
+const wxDesc = (c) => (c === 0 ? 'Céu limpo' : c <= 3 ? 'Parcialmente nublado' : c <= 48 ? 'Neblina' : c <= 67 ? 'Chuva' : c <= 77 ? 'Neve' : c <= 86 ? 'Pancadas' : 'Tempestade');
+async function getWeather(force) {
+  return cached('wx', 15 * 60e3, async () => {
+    const j = await getJSON(
+      `https://api.open-meteo.com/v1/forecast?latitude=${CITIES.map((c) => c[1]).join(',')}&longitude=${CITIES.map((c) => c[2]).join(',')}&current=temperature_2m,weather_code,wind_speed_10m&timezone=auto`
+    );
+    const arr = Array.isArray(j) ? j : [j];
+    const cities = arr.map((x, i) => ({
+      name: CITIES[i][0], lat: CITIES[i][1], lng: CITIES[i][2],
+      temp: x.current.temperature_2m, code: x.current.weather_code, wind: x.current.wind_speed_10m,
+    }));
+    return { updated: new Date().toISOString(), cities };
   }, force);
 }
 
@@ -148,7 +181,7 @@ const tagOf = (b, n) => {
   const m = b.match(new RegExp('<' + n + '(?:\\s[^>]*)?>([\\s\\S]*?)</' + n + '>', 'i'));
   return m ? m[1] : '';
 };
-const NEG = ['war', 'attack', 'strike', 'missile', 'sanction', 'crisis', 'recession', 'tariff', 'default', 'collapse', 'invasion', 'conflict', 'crash', 'plunge', 'tumble', 'shutdown', 'bankrupt', 'inflation', 'famine', 'terror', 'explosion', 'killed', 'threat', 'ceasefire collapse', 'guerra', 'ataque', 'sanç', 'crise', 'recess', 'tarifa', 'calote', 'colapso', 'conflito', 'queda', 'inflação', 'míssil', 'bomba', 'ameaça'];
+const NEG = ['war', 'attack', 'strike', 'missile', 'sanction', 'crisis', 'recession', 'tariff', 'default', 'collapse', 'invasion', 'conflict', 'crash', 'plunge', 'tumble', 'shutdown', 'bankrupt', 'inflation', 'famine', 'terror', 'explosion', 'killed', 'threat', 'guerra', 'ataque', 'sanç', 'crise', 'recess', 'tarifa', 'calote', 'colapso', 'conflito', 'queda', 'inflação', 'míssil', 'bomba', 'ameaça'];
 const POS = ['rally', 'growth', 'deal', 'ceasefire', 'record high', 'rate cut', 'recovery', 'surge', 'agreement', 'peace', 'boost', 'beats', 'acordo', 'crescimento', 'alta', 'cessar-fogo', 'recupera', 'avanço', 'paz', 'recorde'];
 const TAGS = {
   'Petróleo': /\boil\b|crude|opec|petr[óo]leo|brent/,
@@ -158,16 +191,22 @@ const TAGS = {
   'China': /china|beijing|pequim|yuan/,
   'Juros/Fed': /federal reserve|\bfed\b|powell|interest rate|rate cut|juros|selic|copom/,
   'Brasil': /brazil|brasil|lula|ibovespa|petrobras/,
-  'Geopolítica': /\bwar\b|ukraine|russia|gaza|israel|iran|ucr[âa]nia|guerra|nato|otan/,
-  'Tarifas': /tariff|trade war|tarifa|sanction|sanç/,
+  'Geopolítica': /\bwar\b|ukraine|russia|gaza|israel|iran|ucr[âa]nia|guerra|nato|otan|sanction|sanç|middle east|oriente m[ée]dio/,
+  'Tarifas': /tariff|trade war|tarifa/,
 };
 function toneOf(text) {
   const t = text.toLowerCase();
   const neg = NEG.filter((w) => t.includes(w)).length;
   const pos = POS.filter((w) => t.includes(w)).length;
-  const tone = neg > pos ? 'risco' : pos > neg ? 'positivo' : 'neutro';
-  const tags = Object.keys(TAGS).filter((k) => TAGS[k].test(t));
-  return { tone, tags };
+  return { tone: neg > pos ? 'risco' : pos > neg ? 'positivo' : 'neutro', tags: Object.keys(TAGS).filter((k) => TAGS[k].test(t)) };
+}
+function imageOf(b) {
+  const m =
+    b.match(/<media:(?:thumbnail|content)[^>]*\burl="([^"]+)"/i) ||
+    b.match(/<enclosure[^>]*\burl="([^"]+)"[^>]*type="image/i) ||
+    b.match(/<enclosure[^>]*type="image[^"]*"[^>]*\burl="([^"]+)"/i) ||
+    b.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return m && /^https?:/.test(m[1]) ? m[1].replace(/&amp;/g, '&') : '';
 }
 function parseRSS(xml, source) {
   const items = [];
@@ -181,7 +220,7 @@ function parseRSS(xml, source) {
     if (!link) { const h = b.match(/<link[^>]*href="([^"]+)"/); link = h ? h[1] : ''; }
     const desc = clean(tagOf(b, 'description') || tagOf(b, 'summary') || tagOf(b, 'content')).slice(0, 220);
     const when = Date.parse(clean(tagOf(b, 'pubDate') || tagOf(b, 'published') || tagOf(b, 'updated') || tagOf(b, 'dc:date'))) || 0;
-    items.push({ source, title, link, desc, ts: when, ...toneOf(title + ' ' + desc) });
+    items.push({ source, title, link, desc, img: imageOf(b), ts: when, ...toneOf(title + ' ' + desc) });
   }
   return items;
 }
@@ -257,15 +296,15 @@ function localAnalysis(m, n) {
   const nivel = s < 35 ? 'Baixo' : s < 55 ? 'Moderado' : s < 75 ? 'Elevado' : 'Crítico';
 
   const projecoes = [];
-  for (const id of ['usdbrl', 'gold', 'wti', 'btc', 'ibov', 'spx']) {
+  for (const id of ['btc', 'gold', 'usdbrl', 'wti', 'ibov', 'spx']) {
     const a = A(id);
     if (!a || !a.series) continue;
     const p = project(a.series, 7);
     if (!p) continue;
     projecoes.push({
       ativo: a.name, horizonte: '7 dias',
-      cenario_base: `${fx(p.base)} (${sg(pct(p.base, p.last))})`,
-      faixa: `${fx(p.low)} a ${fx(p.high)}`,
+      cenario_base: `Base ${fx(p.base)} (${sg(pct(p.base, p.last))})`,
+      faixa: `${a.unit === 'pts' ? '' : a.unit + ' '}${fx(p.low)} - ${fx(p.high)}`,
       confianca: 'baixa',
       motivo: 'Extrapolação estatística: tendência dos últimos 20 pregões e volatilidade de 30. Não considera notícias.',
     });
@@ -277,33 +316,65 @@ function localAnalysis(m, n) {
   if (oil && Math.abs(oil.change30d) > 8) opp.push({ tese: 'Volatilidade em energia', ativos: ['Petróleo'], racional: `WTI varia ${sg(oil.change30d)} em ~30 pregões.`, risco: 'Decisões da OPEP e geopolítica mudam o cenário de um dia para o outro.' });
   if (!opp.length) opp.push({ tese: 'Cenário sem sinais fortes', ativos: ['Diversificação'], racional: 'Nenhuma regra de oportunidade foi disparada pelos dados atuais.', risco: 'Acompanhe VIX, dólar e petróleo.' });
 
-  const key = items.filter((i) => i.tone === 'risco').slice(0, 5).map((i) => ({ titulo: i.title, fonte: i.source, impacto: 'Tom de risco detectado por palavras-chave.', ativos: i.tags }));
+  const risky = items.filter((i) => i.tone === 'risco');
   return {
     engine: 'local',
     updated: new Date().toISOString(),
-    resumo: `Análise por regras (sem IA). Risco global ${nivel.toLowerCase()} (${s}/100). ${fat[0] || 'Dados insuficientes.'}`,
+    resumo: `Análise por regras, sem IA generativa. Risco global ${nivel.toLowerCase()}, ${s} de 100. ${fat[0] || ''}`.trim(),
     sentimento: s < 35 ? 'otimista' : s < 55 ? 'neutro' : s < 75 ? 'cauteloso' : 'pessimista',
     risco_global: { score: s, nivel, fatores: fat.length ? fat : ['Sem dados suficientes no momento.'] },
-    alertas: [],
-    manchetes_chave: key,
+    alertas: risky.slice(0, 3).map((i) => ({ texto: i.title, nivel: 'medio' })),
+    manchetes_chave: risky.slice(0, 5).map((i) => ({ titulo: i.title, fonte: i.source, impacto: 'Tom de risco detectado por palavras-chave.', ativos: i.tags })),
     projecoes,
     oportunidades: opp,
   };
 }
 
-/* ---------- Claude ---------- */
-async function askClaude(system, messages, max = 2600) {
+/* ---------- IA (Gemini, Groq ou Claude) ---------- */
+async function askLLM(system, messages, max = 2600, json = false) {
+  if (!PROVIDER) throw new Error('nenhuma IA configurada');
+  const signal = AbortSignal.timeout(60000);
+  if (PROVIDER === 'gemini') {
+    const gc = { maxOutputTokens: max };
+    if (json) gc.responseMimeType = 'application/json';
+    if (/2\.5-flash/.test(MODELS.gemini)) gc.thinkingConfig = { thinkingBudget: 0 };
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELS.gemini}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': KEYS.gemini },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+        generationConfig: gc,
+      }),
+      signal,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'HTTP ' + r.status);
+    const parts = (((j.candidates || [])[0] || {}).content || {}).parts;
+    if (!parts) throw new Error('resposta vazia do Gemini');
+    return parts.map((p) => p.text || '').join('');
+  }
+  if (PROVIDER === 'groq') {
+    const body = { model: MODELS.groq, max_tokens: Math.min(max, 4096), temperature: json ? 0.3 : 0.6, messages: [{ role: 'system', content: system }, ...messages] };
+    if (json) body.response_format = { type: 'json_object' };
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + KEYS.groq }, body: JSON.stringify(body), signal,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'HTTP ' + r.status);
+    return (((j.choices || [])[0] || {}).message || {}).content || '';
+  }
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: MODEL, max_tokens: max, system, messages }),
-    signal: AbortSignal.timeout(60000),
+    headers: { 'content-type': 'application/json', 'x-api-key': KEYS.anthropic, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: MODELS.anthropic, max_tokens: max, system, messages }),
+    signal,
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((j.error && j.error.message) || 'HTTP ' + r.status);
   return (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
 }
-function snapText(m, n) {
+function snapText(m, n, w) {
   const L = ['DATA/HORA: ' + new Date().toISOString() + ' (UTC)', '', 'COTAÇÕES (preço | var. dia | var. ~30 pregões | máx/mín 30 pregões):'];
   for (const a of m.assets) {
     if (a.error || a.price == null) { L.push(`- ${a.name}: indisponível`); continue; }
@@ -311,11 +382,15 @@ function snapText(m, n) {
     L.push(`- ${a.name}: ${fx(a.price)} ${a.unit} | dia ${sg(a.change)} | 30d ${sg(a.change30d)} | máx ${fx(Math.max(...last))} mín ${fx(Math.min(...last))}`);
   }
   if (m.fng) L.push('', `Índice Medo e Ganância (cripto): ${m.fng.value} (${m.fng.label})`);
+  if (w && w.cities && w.cities.length) {
+    L.push('', 'CLIMA AGORA:');
+    w.cities.forEach((c) => L.push(`- ${c.name}: ${c.temp}°C, ${wxDesc(c.code).toLowerCase()}, vento ${c.wind} km/h`));
+  }
   L.push('', 'MANCHETES RECENTES (fonte | tom automático | título):');
   n.items.slice(0, 40).forEach((i) => L.push(`- [${i.source}] (${i.tone}) ${i.title}`));
   return L.join('\n');
 }
-const ANALYSIS_SYSTEM = `Você é o motor de análise da plataforma MarketOS. Recebe cotações e manchetes reais e produz uma análise em português do Brasil.
+const ANALYSIS_SYSTEM = `Você é o motor de análise da plataforma Zodam AI. Recebe cotações, clima e manchetes reais e produz uma análise em português do Brasil.
 Regras:
 - Use apenas os dados fornecidos. Não invente números nem notícias. Ao citar valores, use os que foram dados.
 - Projeções são cenários probabilísticos com faixa e nível de confiança. Nunca trate como certeza.
@@ -324,25 +399,25 @@ Regras:
 Formato:
 {"resumo":"3 a 4 frases","sentimento":"otimista|neutro|cauteloso|pessimista",
 "risco_global":{"score":0-100,"nivel":"Baixo|Moderado|Elevado|Crítico","fatores":["3 a 5 itens"]},
-"alertas":["0 a 3 itens"],
+"alertas":[{"texto":"","nivel":"alto|medio|baixo"}],
 "manchetes_chave":[{"titulo":"","fonte":"","impacto":"efeito provável nos mercados","ativos":["..."]}],
-"projecoes":[{"ativo":"","horizonte":"7 dias","cenario_base":"","faixa":"","confianca":"baixa|média|alta","motivo":""}],
+"projecoes":[{"ativo":"","horizonte":"7 dias","cenario_base":"","faixa":"ex.: US$ 3.950 - 4.150","confianca":"baixa|média|alta","motivo":""}],
 "oportunidades":[{"tese":"","ativos":["..."],"racional":"","risco":""}]}
-Inclua projeções para Dólar, Ouro, Petróleo, Bitcoin, Ibovespa e S&P 500 (quando houver dado), até 5 manchetes_chave e de 3 a 5 oportunidades.`;
+Inclua projeções para Bitcoin, Ouro, Dólar, Petróleo, Ibovespa e S&P 500 (quando houver dado), nessa ordem. Inclua de 2 a 4 alertas, até 5 manchetes_chave e de 3 a 5 oportunidades.`;
 
 let lastAI = 0;
 async function getAnalysis(force) {
-  const m = await getMarkets(), n = await getNews();
+  const [m, n, w] = await Promise.all([getMarkets(), getNews(), getWeather().catch(() => null)]);
   const local = () => localAnalysis(m, n);
-  if (!KEY) return cached('analysis', 5 * 60e3, async () => local(), force);
+  if (!PROVIDER) return cached('analysis', 5 * 60e3, async () => local(), force);
   if (force && Date.now() - lastAI < 60e3) force = false;
   return cached('analysis', 15 * 60e3, async () => {
     try {
       lastAI = Date.now();
-      const txt = await askClaude(ANALYSIS_SYSTEM, [{ role: 'user', content: snapText(m, n) }]);
+      const txt = await askLLM(ANALYSIS_SYSTEM, [{ role: 'user', content: snapText(m, n, w) }], 4096, true);
       const j = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
       if (!j.risco_global) throw new Error('JSON sem risco_global');
-      return { engine: 'claude', model: MODEL, updated: new Date().toISOString(), ...j };
+      return { engine: PROVIDER, model: MODELS[PROVIDER], updated: new Date().toISOString(), ...j };
     } catch (e) {
       const v = local();
       v.note = 'Falha na IA: ' + e.message;
@@ -355,40 +430,44 @@ async function getAnalysis(force) {
 /* ---------- chat ---------- */
 const ALIAS = {
   usdbrl: ['dólar', 'dolar', 'usd'], eurbrl: ['euro'], gold: ['ouro'], silver: ['prata'], wti: ['petróleo', 'petroleo', 'wti'],
-  brent: ['brent'], copper: ['cobre'], btc: ['bitcoin', 'btc'], eth: ['ethereum', 'eth'], ibov: ['ibovespa', 'bolsa', 'ibov'],
-  spx: ['s&p', 'sp500'], ndx: ['nasdaq'], vix: ['vix', 'volatilidade'], us10y: ['juros', 'treasury', '10 anos'], dxy: ['dxy'],
+  brent: ['brent'], copper: ['cobre'], soy: ['soja'], corn: ['milho'], btc: ['bitcoin', 'btc'], eth: ['ethereum', 'eth'],
+  ibov: ['ibovespa', 'bolsa', 'ibov'], spx: ['s&p', 'sp500'], ndx: ['nasdaq'], vix: ['vix', 'volatilidade'], us10y: ['juros', 'treasury', '10 anos'], dxy: ['dxy'],
 };
 function localChat(msg, m, n) {
   const q = msg.toLowerCase();
   const out = [];
   for (const a of m.assets) {
     if ((ALIAS[a.id] || []).some((w) => q.includes(w)) && a.price != null) {
-      out.push(`**${a.name}**: ${fx(a.price)} ${a.unit} (${sg(a.change)} no dia, ${sg(a.change30d)} em ~30 pregões).`);
+      out.push(`${a.name}: ${fx(a.price)} ${a.unit}, ${sg(a.change)} no dia e ${sg(a.change30d)} em cerca de 30 pregões.`);
     }
   }
   if (/risco|perigo|crise/.test(q)) {
     const r = localAnalysis(m, n).risco_global;
-    out.push(r.score == null ? '**Risco global**: indisponível, pois não há dados de mercado agora.' : `**Risco global**: ${r.nivel} (${r.score}/100).\n- ` + r.fatores.join('\n- '));
+    out.push(r.score == null ? 'Risco global indisponível, pois não há dados de mercado agora.' : `Risco global ${r.nivel.toLowerCase()}, ${r.score} de 100. ${r.fatores[0] || ''}`);
   }
-  if (/not[ií]cia|manchete|jornal/.test(q)) out.push('**Manchetes recentes**:\n- ' + n.items.slice(0, 5).map((i) => `${i.title} (${i.source})`).join('\n- '));
-  if (!out.length) out.push('Posso responder sobre cotações (dólar, ouro, petróleo, bitcoin, Ibovespa...), risco global e manchetes. Para análises abertas, configure a chave da IA.');
-  out.push('_Modo local: respostas por regras. Defina ANTHROPIC_API_KEY para conversar com a IA._');
-  return out.join('\n\n');
+  if (/not[ií]cia|manchete|jornal/.test(q)) out.push('Manchetes recentes: ' + n.items.slice(0, 4).map((i) => `${i.title} (${i.source})`).join('. '));
+  if (!out.length) out.push('Posso responder sobre cotações, risco global e manchetes. Para análises abertas, configure uma IA gratuita no servidor.');
+  out.push('Estou em modo local, sem IA generativa.');
+  return out.join(' ');
 }
-async function chat(message, history) {
-  const [m, n] = await Promise.all([getMarkets(), getNews()]);
-  if (!KEY) return { engine: 'local', answer: localChat(message, m, n) };
+async function chat(message, history, voice) {
+  const [m, n, w] = await Promise.all([getMarkets(), getNews(), getWeather().catch(() => null)]);
+  if (!PROVIDER) return { engine: 'local', answer: localChat(message, m, n) };
   const an = cache.get('analysis');
-  const system = `Você é o analista de IA da plataforma MarketOS. Responda em português do Brasil, de forma direta e organizada, usando APENAS os dados do painel abaixo.
-Se a pergunta exigir algo que não está nos dados, diga isso. Não invente cotações nem notícias. Projeções são cenários, nunca certezas. Não dê recomendação financeira personalizada; ofereça hipóteses e riscos.
+  const style = voice
+    ? 'Responda como uma voz falada: no máximo 4 frases curtas, sem markdown, sem listas, sem símbolos, tom calmo e estratégico.'
+    : 'Responda de forma direta e organizada; pode usar listas curtas.';
+  const system = `Você é a Zodam IA, a inteligência central da plataforma Zodam AI. Responda em português do Brasil usando APENAS os dados do painel abaixo.
+Se a pergunta exigir algo que não está nos dados, diga isso. Não invente cotações, clima ou notícias. Projeções são cenários, nunca certezas. Não dê recomendação financeira personalizada; ofereça hipóteses e riscos.
+${style}
 
-${snapText(m, n)}
+${snapText(m, n, w)}
 ${an && an.v ? '\nANÁLISE ATUAL DO PAINEL (resumo): ' + JSON.stringify({ resumo: an.v.resumo, risco: an.v.risco_global, oportunidades: an.v.oportunidades }) : ''}`;
   const msgs = (history || []).filter((h) => h && ['user', 'assistant'].includes(h.role) && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
   while (msgs.length && msgs[0].role !== 'user') msgs.shift();
   msgs.push({ role: 'user', content: message.slice(0, 2000) });
-  try { return { engine: 'claude', answer: await askClaude(system, msgs, 1200) }; }
-  catch (e) { return { engine: 'local', answer: localChat(message, m, n) + '\n\n_Falha na IA: ' + e.message + '_' }; }
+  try { return { engine: PROVIDER, answer: (await askLLM(system, msgs, 1200)).trim() }; }
+  catch (e) { return { engine: 'local', answer: localChat(message, m, n) + ' Falha na IA: ' + e.message }; }
 }
 
 /* ---------- HTTP ---------- */
@@ -398,6 +477,7 @@ const send = (res, code, body, type = 'application/json; charset=utf-8') => {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 };
 const readBody = (req) => new Promise((ok, no) => {
+  // Na Vercel o corpo JSON já vem lido em req.body.
   if (req.body !== undefined) return ok(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
   let d = '';
   req.on('data', (c) => { d += c; if (d.length > 1e5) { no(new Error('corpo grande')); req.destroy(); } });
@@ -409,14 +489,15 @@ const handle = async (req, res) => {
   try {
     const u = new URL(req.url, 'http://localhost');
     const force = u.searchParams.get('refresh') === '1';
-    if (u.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!KEY, model: KEY ? MODEL : null });
+    if (u.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!PROVIDER, provider: PROVIDER || null, model: PROVIDER ? MODELS[PROVIDER] : null });
     if (u.pathname === '/api/markets') return send(res, 200, await getMarkets(force));
     if (u.pathname === '/api/news') return send(res, 200, await getNews(force));
+    if (u.pathname === '/api/weather') return send(res, 200, await getWeather(force).catch((e) => ({ cities: [], error: e.message })));
     if (u.pathname === '/api/analysis') return send(res, 200, await getAnalysis(force));
     if (u.pathname === '/api/chat' && req.method === 'POST') {
       const b = JSON.parse((await readBody(req)) || '{}');
       if (!b.message || typeof b.message !== 'string') return send(res, 400, { error: 'mensagem vazia' });
-      return send(res, 200, await chat(b.message, b.history));
+      return send(res, 200, await chat(b.message, b.history, !!b.voice));
     }
     if (u.pathname.startsWith('/api/')) return send(res, 404, { error: 'não encontrado' });
     const rel = u.pathname === '/' ? 'index.html' : decodeURIComponent(u.pathname).replace(/^\/+/, '');
@@ -430,7 +511,8 @@ const handle = async (req, res) => {
 const server = http.createServer(handle);
 
 if (require.main === module) {
-  server.listen(PORT, () => console.log(`MarketOS em http://localhost:${PORT}  |  IA: ${KEY ? 'Claude (' + MODEL + ')' : 'modo local (sem ANTHROPIC_API_KEY)'}`));
+  server.listen(PORT, () => console.log(`Zodam AI em http://localhost:${PORT}  |  IA: ${PROVIDER ? PROVIDER + ' (' + MODELS[PROVIDER] + ')' : 'modo local (sem chave de IA)'}`));
 }
+// Exporta o handler (usado pelas funções da Vercel em /api) e utilitários de teste.
 module.exports = handle;
 Object.assign(module.exports, { parseRSS, project, localAnalysis, toneOf, stats });

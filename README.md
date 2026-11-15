@@ -1,42 +1,48 @@
-# MarketOS
+# Zodam AI
 
-Painel futurista de mercados com cotações ao vivo, notícias dos principais jornais, risco global, projeções, oportunidades e um chat com IA que responde com base nos dados da tela.
+Painel de mercados com cotações ao vivo, notícias dos principais jornais, clima global, risco, projeções, oportunidades e um globo 3D que é a IA: você fala ou digita, ela responde por texto e por voz, usando os dados que estão na tela.
 
-## Rodar
+## IA grátis
+
+Escolha uma, crie a chave sem cartão de crédito e coloque no arquivo `.env`:
+
+| Opção | Onde criar a chave | Variável |
+|---|---|---|
+| Gemini (recomendado) | https://aistudio.google.com/apikey | `GEMINI_API_KEY` |
+| Groq (Llama) | https://console.groq.com/keys | `GROQ_API_KEY` |
+| Claude (pago, opcional) | console.anthropic.com | `ANTHROPIC_API_KEY` |
+
+Sem nenhuma chave, o painel funciona em modo local: o risco sai de regras, as projeções são estatísticas e o chat responde cotações e manchetes. Os limites do plano gratuito mudam com o tempo; o servidor guarda a análise em cache por 15 minutos para gastar poucas chamadas.
+
+A voz (falar e ouvir) vem do próprio navegador, sem custo. Use Chrome ou Edge; o microfone pede permissão na primeira vez.
+
+## Rodar no computador
 
 Requer Node 18 ou superior. Não há dependências para instalar.
 
 ```bash
-cp .env.example .env        # opcional: coloque sua ANTHROPIC_API_KEY
+cp .env.example .env     # preencha GEMINI_API_KEY
 node server.js
 ```
 
 Abra http://localhost:3000
 
-Sem chave de IA, o painel funciona em modo local: o risco é calculado por regras (VIX, tom das manchetes, variações de ouro, petróleo, dólar, bitcoin e juros), as projeções são estatísticas e o chat responde cotações e manchetes. Com `ANTHROPIC_API_KEY`, a IA escreve o briefing, o risco global, as projeções e as oportunidades, e o chat responde perguntas abertas usando o snapshot atual do painel.
+## Publicar na Vercel
+
+1. Envie o projeto para o GitHub e importe o repositório na Vercel.
+2. Em Settings → Environment Variables, crie `GEMINI_API_KEY` com a sua chave.
+3. Faça um novo deploy. As rotas ficam na pasta `api/` e o painel em `public/`.
+
+Nunca coloque a chave no código nem no GitHub. O `.gitignore` já exclui o `.env`.
 
 ## Fontes de dados (gratuitas, sem chave)
 
-| Dado | Fonte | Observação |
-|---|---|---|
-| Dólar, euro, DXY, ouro, prata, petróleo, cobre, bolsas, VIX, juro 10 anos | Yahoo Finance (endpoint público não oficial) | Pode ter atraso e mudar sem aviso |
-| Dólar/Euro (reserva) | AwesomeAPI | Usada se o Yahoo falhar |
-| Bitcoin e Ethereum | Yahoo Finance, com CoinGecko como reserva | CoinGecko limita requisições por minuto |
-| Medo e ganância cripto | alternative.me | |
-| Notícias | RSS de BBC, NYT, The Guardian, Al Jazeera, DW, CNBC, Folha e G1 | Reuters, FT e Bloomberg não têm RSS gratuito |
-
-O servidor guarda as respostas em cache (cotações 45 s, notícias 10 min, análise da IA 15 min) para ficar dentro dos limites gratuitos e economizar chamadas de IA.
-
-## Publicar online
-
-Qualquer hospedagem com Node serve (Render, Railway, Fly.io, VPS). Defina `ANTHROPIC_API_KEY` como variável de ambiente no painel da hospedagem e use `node server.js` como comando de início. Não publique o arquivo `.env`.
+Yahoo Finance (cotações, endpoint público não oficial), AwesomeAPI e CoinGecko (reserva), alternative.me (medo e ganância cripto), Open-Meteo (clima) e feeds RSS de BBC, NYT, The Guardian, Al Jazeera, DW, CNBC, Folha e G1.
 
 ## Personalizar
 
-- Ativos: edite a lista `ASSETS` em `server.js` (símbolo do Yahoo Finance em `yf`).
-- Jornais: edite a lista `FEEDS` em `server.js`.
-- Modelo de IA: variável `ANTHROPIC_MODEL`.
-- Visual: tudo em `public/index.html`.
+- Ativos: lista `ASSETS` em `server.js`. Jornais: lista `FEEDS`. Cidades do clima: lista `CITIES`.
+- Visual e voz: `public/index.html`.
 
 ## Aviso
 
