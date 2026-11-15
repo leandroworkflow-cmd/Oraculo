@@ -31,6 +31,8 @@ const wanted = (process.env.AI_PROVIDER || '').toLowerCase();
 // Ordem automática: opções gratuitas primeiro.
 const PROVIDER = wanted && KEYS[wanted] ? wanted : KEYS.gemini ? 'gemini' : KEYS.groq ? 'groq' : KEYS.anthropic ? 'anthropic' : '';
 const UA = 'Mozilla/5.0 (compatible; ZodamAI/1.0)';
+const TAVILY_KEY = process.env.TAVILY_API_KEY || '';
+const DEFAULT_CITY = process.env.DEFAULT_CITY || 'São Paulo';
 
 // Voz do Zodam (ElevenLabs). Brian é uma voz padrão descrita como grave; troque por ELEVENLABS_VOICE_ID.
 const ELEVEN = {
@@ -153,15 +155,69 @@ const wxDesc = (c) => (c === 0 ? 'Céu limpo' : c <= 3 ? 'Parcialmente nublado' 
 async function getWeather(force) {
   return cached('wx', 15 * 60e3, async () => {
     const j = await getJSON(
-      `https://api.open-meteo.com/v1/forecast?latitude=${CITIES.map((c) => c[1]).join(',')}&longitude=${CITIES.map((c) => c[2]).join(',')}&current=temperature_2m,weather_code,wind_speed_10m&timezone=auto`
+      `https://api.open-meteo.com/v1/forecast?latitude=${CITIES.map((c) => c[1]).join(',')}&longitude=${CITIES.map((c) => c[2]).join(',')}&current=temperature_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=1&timezone=auto`
     );
     const arr = Array.isArray(j) ? j : [j];
     const cities = arr.map((x, i) => ({
       name: CITIES[i][0], lat: CITIES[i][1], lng: CITIES[i][2],
       temp: x.current.temperature_2m, code: x.current.weather_code, wind: x.current.wind_speed_10m,
+      max: x.daily && x.daily.temperature_2m_max ? x.daily.temperature_2m_max[0] : null,
+      min: x.daily && x.daily.temperature_2m_min ? x.daily.temperature_2m_min[0] : null,
+      rain: x.daily && x.daily.precipitation_probability_max ? x.daily.precipitation_probability_max[0] : null,
     }));
     return { updated: new Date().toISOString(), cities };
   }, force);
+}
+
+/* ---------- previsão de qualquer cidade (Open-Meteo, sem chave) ---------- */
+const WEEK = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+async function cityForecast(name) {
+  return cached('fc:' + name.toLowerCase(), 15 * 60e3, async () => {
+    const g = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=pt&format=json`);
+    const p = (g.results || [])[0];
+    if (!p) throw new Error('cidade não encontrada: ' + name);
+    const j = await getJSON(
+      `https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&forecast_days=7&timezone=auto`
+    );
+    const d = j.daily;
+    const days = d.time.map((t, i) => ({
+      date: t, dow: WEEK[new Date(t + 'T12:00:00').getDay()], code: d.weather_code[i],
+      max: d.temperature_2m_max[i], min: d.temperature_2m_min[i], rain: d.precipitation_probability_max[i], mm: d.precipitation_sum[i],
+    }));
+    return { place: [p.name, p.admin1, p.country].filter(Boolean).join(', '), now: j.current, days };
+  });
+}
+const WX_Q = /(previs[aã]o|clima\b|chover|chuva|temperatura|vai fazer (calor|frio)|como est[aá] o tempo|tempo (hoje|amanh|agora|em |na |no |para ))/i;
+function cityFrom(msg) {
+  const m = msg.match(/\b(?:em|de|para|na|no|da|do)\s+([\p{L}'-]+(?:\s+(?:de|da|do|dos|das)?\s*[\p{L}'-]+){0,3})/iu);
+  if (!m) return DEFAULT_CITY;
+  const stop = /\b(hoje|amanh[aã]|agora|essa|esta|nesta|nessa|semana|fim|final|manh[aã]|tarde|noite|vai|ser[aá]|est[aá]|como|quanto|qual)\b/i;
+  const c = m[1].split(stop)[0].trim().replace(/^(o|a|os|as)\s+/i, '');
+  return c.length >= 3 ? c : DEFAULT_CITY;
+}
+async function forecastText(msg) {
+  const f = await cityForecast(cityFrom(msg));
+  const L = [`PREVISÃO DO TEMPO REAL (Open-Meteo) para ${f.place}:`,
+    `- Agora: ${f.now.temperature_2m}°C (sensação ${f.now.apparent_temperature}°C), ${wxDesc(f.now.weather_code).toLowerCase()}, vento ${f.now.wind_speed_10m} km/h`];
+  f.days.forEach((x) => L.push(`- ${x.dow} ${x.date.slice(5)}: ${wxDesc(x.code).toLowerCase()}, mín ${x.min}°C, máx ${x.max}°C, chance de chuva ${x.rain ?? 'n/d'}%, ${x.mm ?? 0} mm`));
+  return L.join('\n');
+}
+
+/* ---------- busca na web (Tavily, plano grátis) ---------- */
+async function webSearch(query) {
+  if (!TAVILY_KEY) return '';
+  const news = /not[ií]cia|hoje|agora|[úu]ltim|aconteceu|resultado|placar/i.test(query);
+  const r = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + TAVILY_KEY },
+    body: JSON.stringify({ query: query.slice(0, 380), max_results: 5, search_depth: 'basic', topic: news ? 'news' : 'general' }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error('busca: ' + ((j.detail && j.detail.error) || r.status));
+  const L = ['PESQUISA NA WEB (resultados de agora; cite a fonte pelo nome do site):'];
+  (j.results || []).forEach((x) => L.push(`- [${new URL(x.url).hostname.replace(/^www\./, '')}] ${x.title}: ${String(x.content || '').replace(/\s+/g, ' ').slice(0, 450)}`));
+  return L.length > 1 ? L.join('\n') : '';
 }
 
 /* ---------- notícias ---------- */
@@ -471,15 +527,21 @@ async function chat(message, history, voice) {
   const [m, n, w] = await Promise.all([getMarkets(), getNews(), getWeather().catch(() => null)]);
   if (!PROVIDER) return { engine: 'local', answer: localChat(message, m, n) };
   const an = cache.get('analysis');
+  const extras = [];
+  const wantsWx = WX_Q.test(message);
+  const jobs = [];
+  if (wantsWx) jobs.push(forecastText(message).then((t) => extras.push(t)).catch(() => {}));
+  if (TAVILY_KEY && message.trim().length >= 12 && (!wantsWx || /not[ií]cia/i.test(message))) jobs.push(webSearch(message).then((t) => t && extras.push(t)).catch(() => {}));
+  await Promise.all(jobs);
   const style = voice
     ? 'Responda como uma voz falada: no máximo 4 frases curtas, sem markdown, sem listas, sem símbolos, tom calmo e estratégico.'
     : 'Responda de forma direta e organizada; pode usar listas curtas.';
-  const system = `Você é o Zodam, a inteligência central da plataforma Zodam AI, um holograma sábio e calmo que orienta o usuário sobre o mundo. Responda em português do Brasil usando APENAS os dados do painel abaixo.
-Se a pergunta exigir algo que não está nos dados, diga isso. Não invente cotações, clima ou notícias. Projeções são cenários, nunca certezas. Não dê recomendação financeira personalizada; ofereça hipóteses e riscos.
+  const system = `Você é o Zodam, a inteligência central da plataforma Zodam AI, um holograma sábio e calmo que orienta o usuário sobre o mundo. Responda em português do Brasil usando os dados do painel, a previsão do tempo e a pesquisa na web abaixo (quando houver).
+Para fatos recentes, priorize a pesquisa na web e cite o nome da fonte. Se a pergunta exigir algo que não está nos dados nem na pesquisa, diga isso. Não invente cotações, clima ou notícias. Projeções são cenários, nunca certezas. Não dê recomendação financeira personalizada; ofereça hipóteses e riscos.
 ${style}
 
 ${snapText(m, n, w)}
-${an && an.v ? '\nANÁLISE ATUAL DO PAINEL (resumo): ' + JSON.stringify({ resumo: an.v.resumo, risco: an.v.risco_global, oportunidades: an.v.oportunidades }) : ''}`;
+${extras.length ? '\n' + extras.join('\n\n') + '\n' : ''}${an && an.v ? '\nANÁLISE ATUAL DO PAINEL (resumo): ' + JSON.stringify({ resumo: an.v.resumo, risco: an.v.risco_global, oportunidades: an.v.oportunidades }) : ''}`;
   const msgs = (history || []).filter((h) => h && ['user', 'assistant'].includes(h.role) && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
   while (msgs.length && msgs[0].role !== 'user') msgs.shift();
   msgs.push({ role: 'user', content: message.slice(0, 2000) });
@@ -541,7 +603,7 @@ const handle = async (req, res) => {
   try {
     const u = new URL(req.url, 'http://localhost');
     const force = u.searchParams.get('refresh') === '1';
-    if (u.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!PROVIDER, provider: PROVIDER || null, model: PROVIDER ? MODELS[PROVIDER] : null, tts: !!ELEVEN.key });
+    if (u.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!PROVIDER, provider: PROVIDER || null, model: PROVIDER ? MODELS[PROVIDER] : null, tts: !!ELEVEN.key, search: !!TAVILY_KEY });
     if (u.pathname === '/api/markets') return send(res, 200, await getMarkets(force));
     if (u.pathname === '/api/news') return send(res, 200, await getNews(force));
     if (u.pathname === '/api/weather') return send(res, 200, await getWeather(force).catch((e) => ({ cities: [], error: e.message })));

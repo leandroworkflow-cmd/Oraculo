@@ -460,7 +460,7 @@ function wxIcon(c){
 }
 const wxDesc=c=>c===0?'Céu limpo':c<=3?'Parcialmente nublado':c<=48?'Neblina':c<=67?'Chuva':c<=77?'Neve':c<=86?'Pancadas':'Tempestade';
 function renderWx(){
-  $('#wx').innerHTML=S.wx.length?S.wx.map(c=>`<div class="wc">${wxIcon(c.code)}<b>${nf(c.temp,0)}°C</b><strong style="font-size:13px">${esc(c.name)}</strong><span>${wxDesc(c.code)}${S.view==='clima'?' · vento '+nf(c.wind,0)+' km/h':''}</span></div>`).join(''):'<p class="empty">Clima indisponível agora.</p>';
+  $('#wx').innerHTML=S.wx.length?S.wx.map(c=>`<div class="wc">${wxIcon(c.code)}<b>${nf(c.temp,0)}°C</b><strong style="font-size:13px">${esc(c.name)}</strong><span>${wxDesc(c.code)}${S.view==='clima'?' · vento '+nf(c.wind,0)+' km/h'+(c.max!=null?' · mín '+nf(c.min,0)+'° máx '+nf(c.max,0)+'° · chuva '+(c.rain??'--')+'%':''):''}</span></div>`).join(''):'<p class="empty">Clima indisponível agora.</p>';
 }
 async function loadWx(){try{const j=await (await fetch('/api/weather')).json();S.wx=j.cities||[];}catch{S.wx=[];}renderWx();renderAlerts();}
 
