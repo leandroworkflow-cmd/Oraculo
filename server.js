@@ -398,13 +398,14 @@ const send = (res, code, body, type = 'application/json; charset=utf-8') => {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 };
 const readBody = (req) => new Promise((ok, no) => {
+  if (req.body !== undefined) return ok(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
   let d = '';
   req.on('data', (c) => { d += c; if (d.length > 1e5) { no(new Error('corpo grande')); req.destroy(); } });
   req.on('end', () => ok(d));
   req.on('error', no);
 });
 
-const server = http.createServer(async (req, res) => {
+const handle = async (req, res) => {
   try {
     const u = new URL(req.url, 'http://localhost');
     const force = u.searchParams.get('refresh') === '1';
@@ -425,9 +426,11 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     send(res, 500, { error: e.message });
   }
-});
+};
+const server = http.createServer(handle);
 
 if (require.main === module) {
   server.listen(PORT, () => console.log(`MarketOS em http://localhost:${PORT}  |  IA: ${KEY ? 'Claude (' + MODEL + ')' : 'modo local (sem ANTHROPIC_API_KEY)'}`));
 }
-module.exports = { parseRSS, project, localAnalysis, toneOf, stats };
+module.exports = handle;
+Object.assign(module.exports, { parseRSS, project, localAnalysis, toneOf, stats });
