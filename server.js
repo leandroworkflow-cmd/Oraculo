@@ -296,6 +296,17 @@ function hazardsText(h) {
   return L.join('\n');
 }
 
+/* ---------- Terra ao vivo: imagem mais recente da NASA EPIC (DSCOVR) ---------- */
+async function getEpic(force) {
+  return cached('epic', 30 * 60e3, async () => {
+    const j = await getJSON('https://epic.gsfc.nasa.gov/api/natural');
+    const last = (Array.isArray(j) ? j : []).filter((x) => x && x.image && x.date).pop();
+    if (!last) throw new Error('EPIC sem imagens');
+    const [y, mo, d] = last.date.slice(0, 10).split('-');
+    return { date: last.date, caption: last.caption || '', url: `https://epic.gsfc.nasa.gov/archive/natural/${y}/${mo}/${d}/jpg/${last.image}.jpg` };
+  }, force);
+}
+
 /* ---------- notícias ---------- */
 const FEEDS = [
   ['BBC News', 'https://feeds.bbci.co.uk/news/world/rss.xml'],
@@ -686,6 +697,7 @@ const handle = async (req, res) => {
     if (u.pathname === '/api/markets') return send(res, 200, await getMarkets(force));
     if (u.pathname === '/api/news') return send(res, 200, await getNews(force));
     if (u.pathname === '/api/weather') return send(res, 200, await getWeather(force).catch((e) => ({ cities: [], error: e.message })));
+    if (u.pathname === '/api/epic') return send(res, 200, await getEpic(force).catch((e) => ({ error: e.message })));
     if (u.pathname === '/api/hazards') return send(res, 200, await getHazards(force));
     if (u.pathname === '/api/analysis') return send(res, 200, await getAnalysis(force));
     if (u.pathname === '/api/tts' && req.method === 'POST') {

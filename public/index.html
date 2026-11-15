@@ -186,6 +186,12 @@ select{background:#0d0a26;color:var(--txt);border:1px solid var(--line2);border-
 .hz .kpbar i{height:8px;border-radius:2px;background:rgba(139,108,255,.18)}
 .hz .kpbar i.on{background:var(--cy)}.hz .kpbar i.on.w{background:var(--am)}.hz .kpbar i.on.d{background:var(--dn)}
 .hz .src{color:var(--dim);font:10px var(--mono)}
+.earth{display:grid;gap:10px}
+.earth .tabs{display:flex;flex-wrap:wrap;gap:6px}
+.earth .frame{position:relative;width:100%;max-width:820px;margin-inline:auto;aspect-ratio:1;background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.earth img{width:100%;height:100%;object-fit:contain;display:block}
+.earth .msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--dim);font:12px var(--mono)}
+.earth .src{color:var(--dim);font:10px var(--mono);text-align:center}
 .m-hi{color:var(--dn)}.m-md{color:var(--am)}.m-lo{color:var(--cy)}
 
 .list{display:grid;gap:2px}
@@ -238,6 +244,7 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
     <a href="#geopolitica" data-v="geopolitica">Geopolítica</a>
     <a href="#clima" data-v="clima">Clima</a>
     <a href="#planeta" data-v="planeta">Planeta</a>
+    <a href="#terra" data-v="terra">Terra ao vivo</a>
     <a href="#commodities" data-v="commodities">Commodities</a>
     <a href="#alertas" data-v="alertas">Alertas</a>
     <a href="#previsoes" data-v="previsoes">Previsões</a>
@@ -300,6 +307,15 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
     <section class="panel s12" data-views="dashboard planeta" aria-labelledby="h-hz">
       <div class="ph"><h2 id="h-hz">Riscos Planetários</h2><span class="badge" id="hzMeta"></span></div>
       <div class="hz" id="hz"><p class="empty">Carregando riscos planetários...</p></div>
+    </section>
+
+    <section class="panel s4" data-views="dashboard terra" aria-labelledby="h-ea">
+      <div class="ph"><h2 id="h-ea">Terra ao Vivo</h2><span class="badge" id="eaMeta"></span></div>
+      <div class="earth">
+        <div class="tabs" id="eaTabs" role="tablist"></div>
+        <div class="frame"><img id="eaImg" alt="Imagem de satélite da Terra" hidden><div class="msg" id="eaMsg">Carregando imagem do satélite...</div></div>
+        <div class="src" id="eaSrc"></div>
+      </div>
     </section>
 
     <section class="panel s4" data-views="dashboard alertas" aria-labelledby="h-al">
@@ -380,7 +396,7 @@ const dec=a=>a.unit==='%'?3:(a.price>=10000?0:(a.price<20?(a.price<10?4:2):2));
 const sg=n=>n==null?'n/d':(n>=0?'+':'')+nf(n,2)+'%';
 const arrow=n=>n==null?'':(n>=0?'▲':'▼');
 const cls=n=>n>=0?'up':'dn';
-const VIEWS=['dashboard','mercados','geopolitica','clima','planeta','commodities','alertas','previsoes','relatorios','config'];
+const VIEWS=['dashboard','mercados','geopolitica','clima','planeta','terra','commodities','alertas','previsoes','relatorios','config'];
 const ENG={gemini:'Gemini (grátis)',groq:'Groq / Llama (grátis)',anthropic:'Claude',local:'modo local'};
 
 /* relógio */
@@ -501,6 +517,28 @@ function renderHz(){
   $('#hzMeta').textContent=bad?bad+' em destaque':'';
 }
 async function loadHz(){try{S.hz=await (await fetch('/api/hazards')).json();}catch{S.hz=null;}renderHz();renderAlerts();}
+
+/* ---------- Terra ao vivo (satélites NOAA GOES e NASA EPIC) ---------- */
+const GOES='https://cdn.star.nesdis.noaa.gov/';
+const EARTH=[
+  {id:'east',nome:'Américas (GOES-East)',sizes:[GOES+'GOES19/ABI/FD/GEOCOLOR/1808x1808.jpg',GOES+'GOES19/ABI/FD/GEOCOLOR/678x678.jpg'],fonte:'NOAA GOES-19, cor real de dia e infravermelho à noite (GeoColor). Atualiza a cada ~10 min.'},
+  {id:'west',nome:'Pacífico (GOES-West)',sizes:[GOES+'GOES18/ABI/FD/GEOCOLOR/1808x1808.jpg',GOES+'GOES18/ABI/FD/GEOCOLOR/678x678.jpg'],fonte:'NOAA GOES-18, cor real de dia e infravermelho à noite (GeoColor). Atualiza a cada ~10 min.'},
+  {id:'ir',nome:'Infravermelho (nuvens)',sizes:[GOES+'GOES19/ABI/FD/13/1808x1808.jpg',GOES+'GOES19/ABI/FD/13/678x678.jpg'],fonte:'NOAA GOES-19, banda 13 (infravermelho): mostra o topo das nuvens, de dia e de noite.'},
+  {id:'epic',nome:'Terra inteira (NASA)',epic:true,fonte:'NASA EPIC / DSCOVR, a 1,5 milhão de km da Terra. A imagem mais recente costuma ter algumas horas de atraso.'},
+];
+function renderEarthTabs(){$('#eaTabs').innerHTML=EARTH.map((e,i)=>`<button class="chip${i===S.earth?' on':''}" role="tab" data-i="${i}">${esc(e.nome)}</button>`).join('');$$('#eaTabs .chip').forEach(b=>b.onclick=()=>{S.earth=+b.dataset.i;loadEarth();});}
+function eaFail(t){$('#eaImg').hidden=true;$('#eaMsg').hidden=false;$('#eaMsg').textContent=t;}
+async function loadEarth(){
+  if(S.earth==null)S.earth=0;renderEarthTabs();
+  const e=EARTH[S.earth],img=$('#eaImg');$('#eaSrc').textContent=e.fonte;$('#eaMsg').hidden=false;$('#eaMsg').textContent='Carregando imagem do satélite...';img.hidden=true;$('#eaMeta').textContent='';
+  const bust='?t='+Math.floor(Date.now()/600000);let urls;
+  if(e.epic){try{const j=await (await fetch('/api/epic')).json();if(!j.url)throw 0;urls=[j.url];$('#eaMeta').textContent=new Date(j.date.replace(' ','T')+'Z').toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});}catch{return eaFail('NASA EPIC indisponível agora.');}}
+  else urls=e.sizes.map(u=>u+bust);
+  let k=0;const mine=S.earth;
+  img.onload=()=>{if(mine!==S.earth)return;$('#eaMsg').hidden=true;img.hidden=false;if(!e.epic)$('#eaMeta').textContent='carregada às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});};
+  img.onerror=()=>{if(mine!==S.earth)return;k++;if(k<urls.length)img.src=urls[k];else eaFail('Imagem do satélite indisponível agora.');};
+  img.src=urls[0];
+}
 
 /* ---------- análise ---------- */
 function gaugeColor(s){return s<35?'var(--up)':s<55?'var(--cy)':s<75?'var(--am)':'var(--dn)';}
@@ -808,8 +846,8 @@ $('#cfRate').value=S.rate;$('#cfPitch').value=S.pitch;syncVoiceUI();fillVoices()
 fetch('/api/health').then(r=>r.json()).then(j=>{S.tts=!!j.tts;$('#cfTts').hidden=!S.tts;S.provider=j.provider;$('#provider').textContent='IA: '+(j.ai?(ENG[j.provider]||j.provider):'modo local');
   $('#provHelp').textContent=j.ai?'Converse por voz ou texto com o Zodam.':'Configure GEMINI_API_KEY (grátis) para a IA completa.';applyView();}).catch(()=>{$('#provider').textContent='IA: offline';});
 renderGauge(null);applyView();
-(async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx(),loadHz()]);loadAnalysis(false);})();
-setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(loadHz,10*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
+(async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx(),loadHz()]);loadEarth();loadAnalysis(false);})();
+setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(loadHz,10*60e3);setInterval(loadEarth,10*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
 </script>
 </body>
 </html>
