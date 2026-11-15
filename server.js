@@ -23,8 +23,8 @@ const KEYS = {
   anthropic: process.env.ANTHROPIC_API_KEY || '',
 };
 const MODELS = {
-  gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-  groq: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+  gemini: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  groq: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
   anthropic: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5',
 };
 const wanted = (process.env.AI_PROVIDER || '').toLowerCase();
@@ -355,14 +355,24 @@ async function askLLM(system, messages, max = 2600, json = false) {
     return parts.map((p) => p.text || '').join('');
   }
   if (PROVIDER === 'groq') {
-    const body = { model: MODELS.groq, max_tokens: Math.min(max, 4096), temperature: json ? 0.3 : 0.6, messages: [{ role: 'system', content: system }, ...messages] };
-    if (json) body.response_format = { type: 'json_object' };
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + KEYS.groq }, body: JSON.stringify(body), signal,
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j.error && j.error.message) || 'HTTP ' + r.status);
-    return (((j.choices || [])[0] || {}).message || {}).content || '';
+    const body = { model: MODELS.groq, max_tokens: Math.min(Math.max(max, 2000), 8000), temperature: json ? 0.3 : 0.6, messages: [{ role: 'system', content: system }, ...messages] };
+    // Modelos gpt-oss raciocinam antes de responder; esforço baixo deixa a resposta rápida e barata.
+    if (/^openai\/gpt-oss/.test(MODELS.groq)) body.reasoning_effort = 'low';
+    const call = async (b) => {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST', headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + KEYS.groq }, body: JSON.stringify(b), signal,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j.error && j.error.message) || 'HTTP ' + r.status);
+      return (((j.choices || [])[0] || {}).message || {}).content || '';
+    };
+    if (!json) return call(body);
+    try { return await call({ ...body, response_format: { type: 'json_object' } }); }
+    catch (e) {
+      // Se o modelo não aceitar o modo JSON, tenta de novo sem ele (o prompt já exige JSON).
+      if (/response_format|json/i.test(e.message)) return call(body);
+      throw e;
+    }
   }
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -457,7 +467,7 @@ async function chat(message, history, voice) {
   const style = voice
     ? 'Responda como uma voz falada: no máximo 4 frases curtas, sem markdown, sem listas, sem símbolos, tom calmo e estratégico.'
     : 'Responda de forma direta e organizada; pode usar listas curtas.';
-  const system = `Você é a Zodam IA, a inteligência central da plataforma Zodam AI. Responda em português do Brasil usando APENAS os dados do painel abaixo.
+  const system = `Você é o Zodam, a inteligência central da plataforma Zodam AI, um holograma sábio e calmo que orienta o usuário sobre o mundo. Responda em português do Brasil usando APENAS os dados do painel abaixo.
 Se a pergunta exigir algo que não está nos dados, diga isso. Não invente cotações, clima ou notícias. Projeções são cenários, nunca certezas. Não dê recomendação financeira personalizada; ofereça hipóteses e riscos.
 ${style}
 

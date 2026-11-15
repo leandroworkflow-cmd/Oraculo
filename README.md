@@ -1,6 +1,6 @@
 # Zodam AI
 
-Painel de mercados com cotações ao vivo, notícias dos principais jornais, clima global, risco, projeções, oportunidades e um globo 3D que é a IA: você fala ou digita, ela responde por texto e por voz, usando os dados que estão na tela.
+Painel de mercados com cotações ao vivo, notícias dos principais jornais, clima global, risco, projeções, oportunidades e o Zodam, uma IA em forma de holograma: você fala ou digita, ele responde por texto e por voz, usando os dados que estão na tela.
 
 ## IA grátis
 
@@ -11,6 +11,8 @@ Escolha uma, crie a chave sem cartão de crédito e coloque no arquivo `.env`:
 | Gemini (recomendado) | https://aistudio.google.com/apikey | `GEMINI_API_KEY` |
 | Groq (Llama) | https://console.groq.com/keys | `GROQ_API_KEY` |
 | Claude (pago, opcional) | console.anthropic.com | `ANTHROPIC_API_KEY` |
+
+O modelo padrão do Groq é o `openai/gpt-oss-120b`. Os provedores aposentam modelos com frequência: se aparecer "model is no longer available" no painel, troque o modelo na variável `GROQ_MODEL` (ou `GEMINI_MODEL`) por um da lista atual do provedor. Se houver chaves de mais de um provedor, defina `AI_PROVIDER=groq` para usar o Groq.
 
 Sem nenhuma chave, o painel funciona em modo local: o risco sai de regras, as projeções são estatísticas e o chat responde cotações e manchetes. Os limites do plano gratuito mudam com o tempo; o servidor guarda a análise em cache por 15 minutos para gastar poucas chamadas.
 

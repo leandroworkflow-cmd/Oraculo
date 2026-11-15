@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/globe.gl@2/dist/globe.gl.min.js" defer></script>
 <style>
 /* Layout: menu lateral + área de painéis em grade de 12 colunas. Tema violeta profundo com vidro e brilho. */
 :root{
@@ -100,11 +99,32 @@ body[data-ai=speak] .state i{background:var(--up);box-shadow:0 0 10px var(--up);
 #histBox{max-height:150px;overflow:auto;display:grid;gap:6px;font-size:12px}
 #histBox div{padding:6px 10px;border-radius:10px;border:1px solid var(--line)}
 #histBox .u{background:rgba(56,189,248,.10)}
-.globeWrap{position:relative;min-height:340px}
-#globe{position:absolute;inset:0;cursor:grab}
-#globe canvas{display:block}
-.globeWrap .hint{position:absolute;left:0;right:0;bottom:8px;text-align:center;font:11px var(--mono);color:var(--dim);pointer-events:none}
-@media(max-width:900px){.hero{grid-template-columns:1fr}.globeWrap{order:-1;min-height:300px}}
+.oracle{position:relative;min-height:340px;overflow:hidden;isolation:isolate;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18%);mask-image:linear-gradient(90deg,transparent 0,#000 18%)}
+.oracle .zimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 18%;animation:float 7s ease-in-out infinite;transform-origin:50% 40%}
+@keyframes float{50%{transform:translateY(-6px) scale(1.012)}}
+.oracle::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;box-shadow:inset 0 0 0 0 rgba(56,189,248,0);transition:box-shadow .4s}
+.oracle .glow{position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(60% 55% at 50% 38%,rgba(56,189,248,.0),transparent 70%);transition:background .4s}
+.oracle .scan{position:absolute;left:0;right:0;height:22%;z-index:2;pointer-events:none;top:-25%;opacity:0;background:linear-gradient(180deg,transparent,rgba(56,189,248,.28),transparent)}
+.oracle .ring{position:absolute;left:50%;top:38%;width:46%;aspect-ratio:1;border-radius:50%;border:2px solid var(--cy);z-index:2;pointer-events:none;opacity:0;transform:translate(-50%,-50%) scale(.6)}
+.oracle .eq{position:absolute;left:50%;bottom:7%;transform:translateX(-50%);z-index:3;display:flex;gap:4px;align-items:flex-end;height:30px;opacity:0;transition:opacity .3s}
+.oracle .eq i{width:4px;height:6px;border-radius:2px;background:linear-gradient(var(--cy),var(--vi2));transform-origin:bottom}
+.oracle .hint{position:absolute;left:0;right:0;bottom:6px;z-index:3;text-align:center;font:11px var(--mono);color:var(--dim);pointer-events:none}
+body[data-ai=listen] .oracle .ring{animation:ripple 1.6s ease-out infinite}
+body[data-ai=listen] .oracle .glow{background:radial-gradient(60% 55% at 50% 38%,rgba(56,189,248,.20),transparent 70%)}
+body[data-ai=think] .oracle .scan{opacity:1;animation:sweep 1.5s linear infinite}
+body[data-ai=think] .oracle .glow{background:radial-gradient(60% 55% at 50% 38%,rgba(251,191,36,.14),transparent 70%)}
+body[data-ai=speak] .oracle .glow{animation:talk .55s ease-in-out infinite alternate}
+body[data-ai=speak] .oracle .zimg{animation:float 7s ease-in-out infinite,hum .5s ease-in-out infinite alternate}
+body[data-ai=speak] .oracle .eq{opacity:1}
+body[data-ai=speak] .oracle .eq i{animation:bar .5s ease-in-out infinite alternate}
+.oracle .eq i:nth-child(2n){animation-duration:.38s}.oracle .eq i:nth-child(3n){animation-duration:.62s}.oracle .eq i:nth-child(5n){animation-duration:.45s}
+@keyframes ripple{0%{opacity:.7;transform:translate(-50%,-50%) scale(.55)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.35)}}
+@keyframes sweep{to{top:105%}}
+@keyframes talk{from{background:radial-gradient(60% 55% at 50% 38%,rgba(52,211,153,.06),transparent 70%)}to{background:radial-gradient(60% 55% at 50% 38%,rgba(56,189,248,.28),transparent 70%)}}
+@keyframes hum{to{filter:brightness(1.12) saturate(1.1)}}
+@keyframes bar{from{transform:scaleY(.35)}to{transform:scaleY(4.4)}}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.oracle{order:-1;min-height:360px;-webkit-mask-image:none;mask-image:none}}
 
 /* power ranges */
 .power{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px}
@@ -207,7 +227,7 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
     <a href="#relatorios" data-v="relatorios">Relatórios</a>
     <a href="#config" data-v="config">Configurações</a>
   </nav>
-  <div class="sidefoot"><b id="provider">IA: ...</b><span id="provHelp">Conversa por voz e texto com o globo.</span></div>
+  <div class="sidefoot"><b id="provider">IA: ...</b><span id="provHelp">Converse por voz ou texto com o Zodam.</span></div>
 </aside>
 
 <div class="content">
@@ -218,18 +238,22 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
   <div class="strip" id="strip" aria-label="Cotações principais"></div>
 
   <main>
-    <section class="panel hero s7" data-views="dashboard" aria-label="Zodam IA">
+    <section class="panel hero s7" data-views="dashboard" aria-label="Zodam">
       <div class="l">
         <h1>Cenário Global<br>em <span>Tempo Real</span></h1>
-        <p>Mercados, geopolítica e clima conectados por IA. Pergunte por voz ou por texto ao globo.</p>
+        <p>Mercados, geopolítica e clima conectados por IA. Fale ou digite: o Zodam responde com base nos dados da tela.</p>
         <div class="state"><i></i><span id="orbState">Pronta</span></div>
-        <div id="cap" aria-live="polite">Olá, eu sou a Zodam IA. Pergunte sobre os mercados, o risco global, as notícias ou o clima.</div>
-        <form class="ask" id="ask"><input id="cin" autocomplete="off" placeholder="Pergunte à Zodam IA..." aria-label="Sua pergunta"><button class="mic" type="button" id="mic" aria-pressed="false" aria-label="Falar com a IA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button class="btn" type="submit">Enviar</button></form>
+        <div id="cap" aria-live="polite">Olá, eu sou o Zodam. Pergunte sobre os mercados, o risco global, as notícias ou o clima.</div>
+        <form class="ask" id="ask"><input id="cin" autocomplete="off" placeholder="Pergunte ao Zodam..." aria-label="Sua pergunta"><button class="mic" type="button" id="mic" aria-pressed="false" aria-label="Falar com a IA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button class="btn" type="submit">Enviar</button></form>
         <div class="row" id="sugs"></div>
         <div class="row"><button class="btn" id="voiceBtn" aria-pressed="false">Ativar voz</button><button class="btn" id="sumBtn">Ouvir resumo do dia</button><button class="btn" id="histBtn" aria-pressed="false">Ver conversa</button></div>
         <div id="histBox" hidden></div>
       </div>
-      <div class="globeWrap"><div id="globe" aria-label="Globo 3D da Zodam IA"></div><div class="hint" id="gHint">arraste para girar</div></div>
+      <div class="oracle" id="oracle" role="img" aria-label="Zodam, a inteligência central em forma de holograma">
+        <img class="zimg" src="zodam.jpg" alt="" width="1000" height="885" fetchpriority="high">
+        <div class="glow"></div><div class="scan"></div><div class="ring"></div>
+        <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
     </section>
 
     <section class="panel s5" id="powerPanel" data-views="dashboard previsoes relatorios" aria-labelledby="h-pw">
@@ -322,7 +346,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const nf=(n,d)=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
 const store={get(k,d){try{const v=localStorage.getItem('zodam.'+k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem('zodam.'+k,JSON.stringify(v))}catch{}}};
 const S={assets:[],news:[],analysis:null,wx:[],sel:'spx',range:60,view:'dashboard',q:'',tone:'all',src:'all',
-  speak:store.get('speak',false),rate:store.get('rate',.95),pitch:store.get('pitch',.8),voice:store.get('voice',''),hist:[],rec:null,globe:null,provider:null};
+  speak:store.get('speak',false),rate:store.get('rate',.95),pitch:store.get('pitch',.8),voice:store.get('voice',''),hist:[],rec:null,provider:null};
 const A=id=>S.assets.find(a=>a.id===id);
 const dec=a=>a.unit==='%'?3:(a.price>=10000?0:(a.price<20?(a.price<10?4:2):2));
 const sg=n=>n==null?'n/d':(n>=0?'+':'')+nf(n,2)+'%';
@@ -429,7 +453,6 @@ function wxIcon(c){
 const wxDesc=c=>c===0?'Céu limpo':c<=3?'Parcialmente nublado':c<=48?'Neblina':c<=67?'Chuva':c<=77?'Neve':c<=86?'Pancadas':'Tempestade';
 function renderWx(){
   $('#wx').innerHTML=S.wx.length?S.wx.map(c=>`<div class="wc">${wxIcon(c.code)}<b>${nf(c.temp,0)}°C</b><strong style="font-size:13px">${esc(c.name)}</strong><span>${wxDesc(c.code)}${S.view==='clima'?' · vento '+nf(c.wind,0)+' km/h':''}</span></div>`).join(''):'<p class="empty">Clima indisponível agora.</p>';
-  if(S.globe)S.globe.pointsData(S.wx);
 }
 async function loadWx(){try{const j=await (await fetch('/api/weather')).json();S.wx=j.cities||[];}catch{S.wx=[];}renderWx();renderAlerts();}
 
@@ -505,44 +528,12 @@ async function loadNews(){
   catch{$('#geo').innerHTML='<p class="empty">Falha ao carregar notícias.</p>';}
 }
 
-/* ---------- globo: IA que fala ---------- */
-const STATE_TXT={idle:'Pronta',listen:'Ouvindo...',think:'Analisando...',speak:'Falando...'};
+/* ---------- Zodam: IA que fala (estados controlam a animação via CSS) ---------- */
+const STATE_TXT={idle:'Pronto',listen:'Ouvindo...',think:'Analisando...',speak:'Falando...'};
 function setState(s){
   document.body.dataset.ai=s;$('#orbState').textContent=STATE_TXT[s];
   $('#mic').setAttribute('aria-pressed',s==='listen');
-  const g=S.globe;if(g){
-    g.ringsData(s==='speak'||s==='think'?[{lat:15,lng:-45},{lat:-20,lng:70},{lat:40,lng:120}]:[]);
-    const c=g.controls();c.autoRotateSpeed=s==='speak'?2.2:s==='think'?1.4:.6;}
 }
-function sizeGlobe(){const el=$('#globe'),g=S.globe;if(!g)return;const r=el.getBoundingClientRect();if(r.width>10&&r.height>10)g.width(r.width).height(r.height);}
-function fallbackOrb(el){
-  const c=document.createElement('canvas');el.appendChild(c);const x=c.getContext('2d');let t=0;
-  const size=()=>{const r=el.getBoundingClientRect(),d=devicePixelRatio||1;c.width=r.width*d;c.height=r.height*d;c.style.width='100%';c.style.height='100%';};
-  size();addEventListener('resize',size);
-  (function loop(){t+=.006;const W=c.width,H=c.height,d=devicePixelRatio||1,sp=document.body.dataset.ai==='speak',R=Math.min(W,H)*.34*(sp?1+Math.sin(t*50)*.025:1),cx=W/2,cy=H/2;
-    x.clearRect(0,0,W,H);const g=x.createRadialGradient(cx,cy,R*.5,cx,cy,R*1.5);g.addColorStop(0,'rgba(56,189,248,.18)');g.addColorStop(1,'rgba(56,189,248,0)');x.fillStyle=g;x.fillRect(0,0,W,H);
-    x.strokeStyle='rgba(167,139,250,.7)';x.lineWidth=1.2*d;
-    for(let i=0;i<12;i++){const a=t+i*Math.PI/12;x.beginPath();x.ellipse(cx,cy,Math.abs(Math.cos(a))*R,R,0,0,Math.PI*2);x.stroke();}
-    for(let j=-4;j<=4;j++){const y=j/5*R,rr=Math.sqrt(Math.max(0,R*R-y*y));x.beginPath();x.ellipse(cx,cy+y,rr,rr*.16,0,0,Math.PI*2);x.stroke();}
-    requestAnimationFrame(loop);})();
-  $('#gHint').textContent='globo 3D indisponível, usando modo simples';
-}
-function initGlobe(){
-  const el=$('#globe');
-  if(window.Globe){
-    try{
-      const g=Globe()(el).globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg').bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
-        .backgroundColor('rgba(0,0,0,0)').atmosphereColor('#7c6cff').atmosphereAltitude(.25)
-        .pointLat('lat').pointLng('lng').pointAltitude(.03).pointRadius(.5).pointColor(()=>'#fbbf24').pointLabel(d=>`${d.name}: ${Math.round(d.temp)}°C, ${wxDesc(d.code)}`)
-        .ringColor(()=>t=>`rgba(56,189,248,${1-t})`).ringMaxRadius(26).ringPropagationSpeed(3).ringRepeatPeriod(650);
-      const c=g.controls();c.autoRotate=true;c.autoRotateSpeed=.6;c.enableZoom=false;
-      S.globe=g;sizeGlobe();if('ResizeObserver' in window)new ResizeObserver(sizeGlobe).observe(el);
-      g.pointsData(S.wx);return;
-    }catch(e){el.innerHTML='';}
-  }
-  fallbackOrb(el);
-}
-addEventListener('load',initGlobe);
 
 /* ---------- voz ---------- */
 const hasTTS='speechSynthesis' in window;
@@ -588,7 +579,7 @@ function speakSummary(){const a=S.analysis;if(!a){showCap('A análise ainda est�
   if(!S.speak){S.speak=true;store.set('speak',true);syncVoiceUI();}speak(t,true);}
 function syncVoiceUI(){$('#voiceBtn').setAttribute('aria-pressed',S.speak);$('#voiceBtn').textContent=S.speak?'Voz ativada':'Ativar voz';$('#cfSpeak').checked=S.speak;}
 function toggleVoice(){S.speak=!S.speak;store.set('speak',S.speak);syncVoiceUI();
-  if(S.speak){if(!hasTTS){showCap('Seu navegador não tem síntese de voz.');S.speak=false;syncVoiceUI();return;}speak('Zodam IA online. Pode perguntar.',true);}else{stopSpeak();setState('idle');}}
+  if(S.speak){if(!hasTTS){showCap('Seu navegador não tem síntese de voz.');S.speak=false;syncVoiceUI();return;}speak('Zodam online. Pode perguntar.',true);}else{stopSpeak();setState('idle');}}
 function fillVoices(){if(!hasTTS)return;const sel=$('#cfVoice'),vs=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLowerCase().startsWith('pt'));
   sel.innerHTML='<option value="">Automática (português do Brasil)</option>'+vs.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');sel.value=S.voice;}
 if(hasTTS)speechSynthesis.onvoiceschanged=fillVoices;
@@ -599,7 +590,7 @@ function applyView(){
   $$('.nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
   $$('main>.panel').forEach(p=>{p.hidden=!p.dataset.views.split(' ').includes(S.view);});
   $('#cfInfo').textContent=(S.provider?'IA conectada: '+(ENG[S.provider]||S.provider)+'.':'Nenhuma IA configurada no servidor (modo local).')+' A voz vem do seu navegador (Chrome ou Edge funcionam melhor).';
-  renderChart();renderWx();renderNews();sizeGlobe();window.scrollTo(0,0);
+  renderChart();renderWx();renderNews();window.scrollTo(0,0);
 }
 addEventListener('hashchange',applyView);
 
@@ -625,12 +616,12 @@ $('#cfSpeak').onchange=e=>{if(e.target.checked!==S.speak)toggleVoice();};
 $('#cfVoice').onchange=e=>{S.voice=e.target.value;store.set('voice',S.voice);};
 $('#cfRate').oninput=e=>{S.rate=+e.target.value;store.set('rate',S.rate);};
 $('#cfPitch').oninput=e=>{S.pitch=+e.target.value;store.set('pitch',S.pitch);};
-$('#cfTest').onclick=()=>speak('Zodam IA online. Esta é a minha voz.',true);
+$('#cfTest').onclick=()=>speak('Zodam online. Esta é a minha voz.',true);
 $('#cfRate').value=S.rate;$('#cfPitch').value=S.pitch;syncVoiceUI();fillVoices();
 
 /* ---------- início ---------- */
 fetch('/api/health').then(r=>r.json()).then(j=>{S.provider=j.provider;$('#provider').textContent='IA: '+(j.ai?(ENG[j.provider]||j.provider):'modo local');
-  $('#provHelp').textContent=j.ai?'Conversa por voz e texto com o globo.':'Configure GEMINI_API_KEY (grátis) para a IA completa.';applyView();}).catch(()=>{$('#provider').textContent='IA: offline';});
+  $('#provHelp').textContent=j.ai?'Converse por voz ou texto com o Zodam.':'Configure GEMINI_API_KEY (grátis) para a IA completa.';applyView();}).catch(()=>{$('#provider').textContent='IA: offline';});
 renderGauge(null);applyView();
 (async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx()]);loadAnalysis(false);})();
 setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
