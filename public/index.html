@@ -241,6 +241,8 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
 .foot{margin:18px 0 0;font:11px/1.6 var(--mono);color:var(--dim)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
 
+.s8{grid-column:span 8}
+@media(max-width:1180px){.s8{grid-column:1/-1}}
 /* ---- PRIVATE URBAN INTELLIGENCE ---- */
 .ub-login{display:grid;gap:10px;max-width:360px}
 .ub-login input{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:10px 14px;color:var(--txt);font:14px var(--mono)}
@@ -341,6 +343,24 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
       </div>
     </section>
 
+    <section class="panel s8" id="ubPanel" data-views="dashboard urbano" aria-labelledby="h-ub">
+      <div class="ph"><h2 id="h-ub">PRIVATE URBAN INTELLIGENCE · Belo Horizonte</h2><button class="link" type="button" id="ubSair" hidden>Sair</button></div>
+      <div id="ubLogin" class="ub-login">
+        <p class="note">Área privada. Digite a chave de acesso para ver as câmeras.</p>
+        <input id="ubKey" type="password" placeholder="Chave de acesso" autocomplete="current-password">
+        <button class="btn" type="button" id="ubEntrar">Entrar</button>
+        <p class="note" id="ubErr"></p>
+      </div>
+      <div id="ubApp" hidden>
+        <div class="ub-bar" id="ubRegs"></div>
+        <div id="ubMap"></div>
+        <div class="ub-bar" style="margin-top:12px"><button class="btn" type="button" id="ubAll">Abrir todas da região</button><button class="btn" type="button" id="ubClose">Fechar todas</button><button class="btn" type="button" id="ubAI">Zodam: analisar</button></div>
+        <div class="ub-ai" id="ubTxt" hidden></div>
+        <div class="ub-grid" id="ubGrid"></div>
+        <p class="note" id="ubEmpty" hidden>Nenhuma câmera cadastrada. Use cameras.example.json como modelo (arquivo cameras.json ou variável URBAN_CAMERAS) com fontes autorizadas.</p>
+      </div>
+    </section>
+
     <section class="panel s12" data-views="dashboard planeta" aria-labelledby="h-sc">
       <div class="ph"><h2 id="h-sc">Saúde Global e Ciber</h2><span class="badge" id="scMeta"></span></div>
       <div class="hz" id="sc"><p class="empty">Carregando saúde e ciber...</p></div>
@@ -398,23 +418,6 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
     </section>
 
 
-    <section class="panel s12" data-views="urbano" aria-labelledby="h-ub">
-      <div class="ph"><h2 id="h-ub">PRIVATE URBAN INTELLIGENCE · Belo Horizonte</h2><button class="link" type="button" id="ubSair" hidden>Sair</button></div>
-      <div id="ubLogin" class="ub-login">
-        <p class="note">Área privada. Digite a chave de acesso para ver as câmeras.</p>
-        <input id="ubKey" type="password" placeholder="Chave de acesso" autocomplete="current-password">
-        <button class="btn" type="button" id="ubEntrar">Entrar</button>
-        <p class="note" id="ubErr"></p>
-      </div>
-      <div id="ubApp" hidden>
-        <div class="ub-bar" id="ubRegs"></div>
-        <div id="ubMap"></div>
-        <div class="ub-bar" style="margin-top:12px"><button class="btn" type="button" id="ubAll">Abrir todas da região</button><button class="btn" type="button" id="ubClose">Fechar todas</button><button class="btn" type="button" id="ubAI">Zodam: analisar</button></div>
-        <div class="ub-ai" id="ubTxt" hidden></div>
-        <div class="ub-grid" id="ubGrid"></div>
-        <p class="note" id="ubEmpty" hidden>Nenhuma câmera cadastrada. Use cameras.example.json como modelo (arquivo cameras.json ou variável URBAN_CAMERAS) com fontes autorizadas.</p>
-      </div>
-    </section>
 
     <section class="panel s12" data-views="config" aria-labelledby="h-cf">
       <div class="ph"><h2 id="h-cf">Configurações</h2></div>
@@ -970,7 +973,7 @@ async function enter(){
   const r=await api('cameras');if(!r.ok)return;
   U.cams=(await r.json()).cameras||[];
   $u('#ubLogin').hidden=true;$u('#ubApp').hidden=false;$u('#ubSair').hidden=false;
-  $u('#ubEmpty').hidden=U.cams.length>0;
+  $u('#ubEmpty').hidden=U.cams.length>0;if(!U.open.size)U.cams.forEach(c=>U.open.add(c.id));
   regs();initMap();paint();
 }
 function regs(){
@@ -1028,8 +1031,9 @@ function boot(){
   $u('#ubAll').onclick=()=>{visible().forEach(c=>U.open.add(c.id));grid();};
   $u('#ubClose').onclick=()=>{U.open.clear();grid();};
   $u('#ubAI').onclick=analyze;
-  addEventListener('hashchange',()=>{if(location.hash==='#urbano'){check();if(U.map)setTimeout(()=>U.map.invalidateSize(),100);}else Object.keys(U.timers).forEach(stop);});
-  if(location.hash==='#urbano')check();
+  const on=()=>['dashboard','urbano'].includes(document.body.dataset.view);
+  addEventListener('hashchange',()=>{if(on()){check();if(U.map)setTimeout(()=>U.map.invalidateSize(),100);}else{Object.keys(U.timers).forEach(stop);$u('#ubGrid').innerHTML='';}});
+  if(on())check();
 }
 boot();
 })();
