@@ -192,6 +192,13 @@ select{background:#0d0a26;color:var(--txt);border:1px solid var(--line2);border-
 .earth img{width:100%;height:100%;object-fit:contain;display:block}
 .earth .msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--dim);font:12px var(--mono)}
 .earth .src{color:var(--dim);font:10px var(--mono);text-align:center}
+.dd svg{width:100%;max-width:150px;margin-inline:auto;display:block}
+.dd .big{text-align:center}.dd p{margin:0;text-align:center;font-size:12px;color:var(--dim)}
+.hz a{color:var(--vi2);text-decoration:none}.hz a:hover{text-decoration:underline}
+ul.tl{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:13px;max-height:260px;overflow:auto}
+ul.tl li{display:grid;grid-template-columns:12px auto 1fr;gap:10px;align-items:start}
+ul.tl i{width:10px;height:10px;border-radius:50%;margin-top:5px}
+ul.tl time{font:11px var(--mono);color:var(--dim);white-space:nowrap;margin-top:2px}
 .m-hi{color:var(--dn)}.m-md{color:var(--am)}.m-lo{color:var(--cy)}
 
 .list{display:grid;gap:2px}
@@ -318,6 +325,17 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
       </div>
     </section>
 
+    <section class="panel s12" data-views="dashboard planeta" aria-labelledby="h-sc">
+      <div class="ph"><h2 id="h-sc">Saúde Global e Ciber</h2><span class="badge" id="scMeta"></span></div>
+      <div class="hz" id="sc"><p class="empty">Carregando saúde e ciber...</p></div>
+    </section>
+
+    <section class="panel s4" data-views="dashboard alertas" aria-labelledby="h-tl">
+      <div class="ph"><h2 id="h-tl">Linha do Tempo · 24 h</h2></div>
+      <ul class="tl" id="tl"><li class="empty">Nenhum alerta registrado ainda.</li></ul>
+      <span class="badge">Registro feito neste navegador enquanto o painel está aberto.</span>
+    </section>
+
     <section class="panel s4" data-views="dashboard alertas" aria-labelledby="h-al">
       <div class="ph"><h2 id="h-al">Alertas Globais</h2><span class="badge" id="alMeta"></span></div>
       <ul class="al" id="alerts"><li class="empty">Sem alertas no momento.</li></ul>
@@ -367,6 +385,7 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
       <div class="ph"><h2 id="h-cf">Configurações</h2></div>
       <div class="set">
         <label><span><input type="checkbox" id="cfSpeak"> Falar as respostas em voz alta</span></label>
+        <label><span><input type="checkbox" id="cfPro"> Voz proativa: o Zodam avisa sozinho quando surge um alerta alto</span></label>
         <div id="cfTts" hidden class="set">
           <label>Motor de voz<select id="cfEngine"><option value="eleven">ElevenLabs (voz masculina grave)</option><option value="browser">Voz do navegador</option></select></label>
           <label>Profundidade da voz (mais grave à esquerda) <input type="range" id="cfDeep" min="0.84" max="1" step="0.01"></label>
@@ -390,7 +409,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const nf=(n,d)=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
 const store={get(k,d){try{const v=localStorage.getItem('zodam.'+k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem('zodam.'+k,JSON.stringify(v))}catch{}}};
 const S={assets:[],news:[],analysis:null,wx:[],sel:'spx',range:60,view:'dashboard',q:'',tone:'all',src:'all',
-  speak:store.get('speakOn',true),tts:false,engine:store.get('engine','eleven'),deep:store.get('deep',.93),rate:store.get('rate2',.9),pitch:store.get('pitch2',.55),voice:store.get('voice',''),hist:[],rec:null,provider:null};
+  speak:store.get('speakOn',true),pro:store.get('pro',true),tts:false,engine:store.get('engine','eleven'),deep:store.get('deep',.93),rate:store.get('rate2',.9),pitch:store.get('pitch2',.55),voice:store.get('voice',''),hist:[],rec:null,provider:null};
 const A=id=>S.assets.find(a=>a.id===id);
 const dec=a=>a.unit==='%'?3:(a.price>=10000?0:(a.price<20?(a.price<10?4:2):2));
 const sg=n=>n==null?'n/d':(n>=0?'+':'')+nf(n,2)+'%';
@@ -504,6 +523,13 @@ async function loadWx(){try{const j=await (await fetch('/api/weather')).json();S
 const magCls=m=>m>=6.5?'m-hi':m>=5.5?'m-md':'m-lo';
 const kpCls=k=>k>=7?'d':k>=5?'w':'';
 function hzDate(ts){return ts?new Date(ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}):'';}
+function ddCard(d){
+  if(!d||!d.seconds)return'';
+  const a=-(d.seconds/3600)*2*Math.PI,mx=(60+44*Math.sin(a)).toFixed(1),my=(60-44*Math.cos(a)).toFixed(1);
+  const ticks=Array.from({length:12},(_,i)=>{const t=i*Math.PI/6,r1=i%3?50:46;return`<line x1="${(60+r1*Math.sin(t)).toFixed(1)}" y1="${(60-r1*Math.cos(t)).toFixed(1)}" x2="${(60+54*Math.sin(t)).toFixed(1)}" y2="${(60-54*Math.cos(t)).toFixed(1)}" stroke="${i===0?'#fb5a7a':'#8d89ad'}" stroke-width="${i===0?3:1.5}"/>`;}).join('');
+  const dt=d.set?new Date(d.set+'T12:00:00').toLocaleDateString('pt-BR'):'';
+  return`<div class="dd"><h3>Relógio do Juízo Final</h3><svg viewBox="0 0 120 120" role="img" aria-label="${d.seconds} segundos para a meia-noite"><circle cx="60" cy="60" r="56" fill="none" stroke="rgba(139,108,255,.35)" stroke-width="2"/>${ticks}<line x1="60" y1="60" x2="60" y2="26" stroke="#e6e3f7" stroke-width="4" stroke-linecap="round"/><line x1="60" y1="60" x2="${mx}" y2="${my}" stroke="#fb5a7a" stroke-width="3" stroke-linecap="round"/><circle cx="60" cy="60" r="4" fill="#e6e3f7"/></svg><div class="big m-hi">${d.seconds} s</div><p>para a meia-noite</p><span class="src">Definido em ${dt} pelo Bulletin of the Atomic Scientists. É uma avaliação editorial anual, não uma medição.</span></div>`;
+}
 function renderHz(){
   const h=S.hz;if(!h){$('#hz').innerHTML='<p class="empty">Riscos planetários indisponíveis agora.</p>';return;}
   const er=h.errors||{};
@@ -512,7 +538,7 @@ function renderHz(){
   if(h.space){const k=h.space.kp,on=Math.round(k);sp=`<div class="big">Kp ${nf(k,1)}</div><strong style="font-size:13px">${esc(h.space.label)}</strong><div class="kpbar">${Array.from({length:9},(_,i)=>`<i class="${i<on?'on '+kpCls(k):''}"></i>`).join('')}</div>${h.space.scales?`<span class="src">Escalas NOAA agora: G${h.space.scales.G} · S${h.space.scales.S} · R${h.space.scales.R}</span>`:''}`;}
   let ne='<p class="empty">Fonte NASA indisponível agora.</p>';
   if(h.neo){ne=h.neo.closest.length?`<ul>${h.neo.closest.map(a=>`<li><b class="${a.hazardous?'m-md':'m-lo'}">${nf(a.lunar,1)} LD</b><span>${esc(a.name)}${a.hazardous?' · <span class="m-md">potencialmente perigoso</span>':''}<small>${esc(String(a.when).slice(0,17))} · ${nf(a.dmin,0)}–${nf(a.dmax,0)} m · ${nf(a.kmh,0)} km/h</small></span></li>`).join('')}</ul><span class="src">LD = distância Terra–Lua. ${h.neo.count} objetos nos próximos 3 dias.</span>`:'<p class="empty">Nenhuma aproximação listada.</p>';}
-  $('#hz').innerHTML=`<div><h3>Terremotos · 24 h</h3>${q}<span class="src">Fonte: USGS</span></div><div><h3>Clima espacial</h3>${sp}<span class="src">Fonte: NOAA SWPC</span></div><div><h3>Asteroides próximos</h3>${ne}<span class="src">Fonte: NASA NeoWs</span></div>`;
+  $('#hz').innerHTML=`<div><h3>Terremotos · 24 h</h3>${q}<span class="src">Fonte: USGS</span></div><div><h3>Clima espacial</h3>${sp}<span class="src">Fonte: NOAA SWPC</span></div><div><h3>Asteroides próximos</h3>${ne}<span class="src">Fonte: NASA NeoWs</span></div>${ddCard(h.doomsday)}`;
   const bad=(h.quakes||[]).filter(x=>x.mag>=6).length+((h.space&&h.space.kp>=5)?1:0);
   $('#hzMeta').textContent=bad?bad+' em destaque':'';
 }
@@ -538,6 +564,40 @@ async function loadEarth(){
   img.onload=()=>{if(mine!==S.earth)return;$('#eaMsg').hidden=true;img.hidden=false;if(!e.epic)$('#eaMeta').textContent='carregada às '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'});};
   img.onerror=()=>{if(mine!==S.earth)return;k++;if(k<urls.length)img.src=urls[k];else eaFail('Imagem do satélite indisponível agora.');};
   img.src=urls[0];
+}
+
+/* ---------- saúde global e ciber ---------- */
+const safeUrl=u=>/^https?:\/\//.test(u||'')?esc(u):'';
+function renderSC(){
+  const x=S.sc;if(!x){$('#sc').innerHTML='<p class="empty">Saúde e ciber indisponíveis agora.</p>';return;}
+  const er=x.errors||{};
+  const hl=x.health&&x.health.items.length?`<ul>${x.health.items.map(i=>`<li><b>${i.ts?new Date(i.ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'--'}</b><span>${i.link?`<a href="${safeUrl(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a>`:esc(i.title)}<small>${esc(i.src)}</small></span></li>`).join('')}</ul>`:`<p class="empty">${er.health?'Fonte da OMS indisponível agora.':'Sem alertas recentes.'}</p>`;
+  let cy=`<p class="empty">${er.cyber?'Fonte da CISA indisponível agora.':'Sem dados.'}</p>`;
+  if(x.cyber)cy=`<div class="big">${x.cyber.week}</div><strong style="font-size:13px">novas vulnerabilidades exploradas nos últimos 7 dias</strong><ul>${x.cyber.recent.map(v=>`<li><b class="${v.ransomware?'m-hi':'m-md'}">${esc(v.cve.replace('CVE-',''))}</b><span>${esc(v.vendor)} ${esc(v.product)}<small>${esc(v.name)}${v.ransomware?' · usada em ransomware':''}</small></span></li>`).join('')}</ul><span class="src">${x.cyber.total} no catálogo da CISA</span>`;
+  $('#sc').innerHTML=`<div><h3>Alertas de saúde</h3>${hl}<span class="src">Fonte: OMS (surtos e notícias)</span></div><div><h3>Ciber · vulnerabilidades ativas</h3>${cy}<span class="src">Fonte: CISA KEV</span></div>`;
+}
+async function loadSC(){try{S.sc=await (await fetch('/api/saude-ciber')).json();}catch{S.sc=null;}renderSC();renderAlerts();}
+
+/* ---------- linha do tempo e voz proativa ---------- */
+const T0=Date.now(),TLK='zodamTimeline';
+function tlLoad(){try{return JSON.parse(localStorage.getItem(TLK)||'[]')||[];}catch{return[];}}
+function tlSave(a){try{localStorage.setItem(TLK,JSON.stringify(a));}catch{}}
+function renderTL(){
+  const l=(S.tl||[]);
+  $('#tl').innerHTML=l.length?l.map(e=>`<li><i class="n-${esc(e.nivel)}"></i><time>${new Date(e.t).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'})}</time><span>${esc(e.texto)}</span></li>`).join(''):'<li class="empty">Nenhum alerta registrado nas últimas 24 h.</li>';
+}
+function proSpeak(e){
+  const now=Date.now();if(now-(S.proAt||0)<10*60e3)return;S.proAt=now;
+  showCap('⚠ '+e.texto);
+  if(S.speak&&document.body.dataset.ai==='idle')speak('Alerta. '+e.texto);
+}
+function logAlerts(list){
+  const now=Date.now();let log=tlLoad().filter(x=>x&&now-x.t<864e5);const seen=new Set(log.map(x=>x.texto)),fresh=[];
+  list.forEach(x=>{if(!seen.has(x.texto)){const e={t:now,texto:x.texto,nivel:x.nivel};log.push(e);fresh.push(e);seen.add(x.texto);}});
+  if(fresh.length)tlSave(log);
+  S.tl=log.slice().sort((a,b)=>b.t-a.t);renderTL();
+  // só fala alertas que surgiram com o painel já aberto (nada nos primeiros 20 s de carga)
+  if(S.pro&&now-T0>20000){const hi=fresh.find(e=>e.nivel==='alto');if(hi)proSpeak(hi);}
 }
 
 /* ---------- análise ---------- */
@@ -572,15 +632,18 @@ function renderAnalysis(){
 }
 function renderAlerts(){
   const out=[];const a=S.analysis;
-  ((a&&a.alertas)||[]).forEach(x=>out.push(typeof x==='string'?{texto:x,nivel:'medio'}:{texto:x.texto,nivel:x.nivel||'medio'}));
+  ((a&&a.alertas)||[]).forEach(x=>out.push(typeof x==='string'?{texto:x,nivel:'medio',ia:true}:{texto:x.texto,nivel:x.nivel||'medio',ia:true}));
   S.wx.forEach(c=>{if(c.code>=95)out.push({texto:'Tempestade em '+c.name,nivel:'alto'});else if([65,66,67,75,82,86].includes(c.code))out.push({texto:'Chuva forte ou neve em '+c.name,nivel:'medio'});});
   const hz=S.hz;if(hz){
     (hz.quakes||[]).forEach(x=>{if(x.mag>=6.5||x.tsunami)out.push({texto:`Terremoto M${nf(x.mag,1)} em ${x.place}${x.tsunami?' (alerta de tsunami)':''}`,nivel:'alto'});else if(x.mag>=6)out.push({texto:`Terremoto M${nf(x.mag,1)} em ${x.place}`,nivel:'medio'});});
     if(hz.space&&hz.space.kp>=5)out.push({texto:`${hz.space.label} (Kp ${nf(hz.space.kp,1)})`,nivel:hz.space.kp>=7?'alto':'medio'});
     const a0=hz.neo&&hz.neo.closest&&hz.neo.closest[0];if(a0&&a0.hazardous&&a0.lunar<=5)out.push({texto:`Asteroide ${a0.name} passa a ${nf(a0.lunar,1)} distâncias da Lua`,nivel:'medio'});
   }
+  const d0=S.sc&&S.sc.health&&S.sc.health.items&&S.sc.health.items.find(i=>i.src==='OMS · Surtos');
+  if(d0&&d0.ts&&Date.now()-d0.ts<3*864e5)out.push({texto:'Alerta de saúde (OMS): '+d0.title,nivel:'medio'});
   $('#alerts').innerHTML=out.length?out.map(x=>`<li><i class="n-${esc(String(x.nivel).replace('é','e'))}"></i><span>${esc(x.texto)}</span></li>`).join(''):'<li class="empty">Sem alertas no momento.</li>';
   $('#bell').textContent=out.length;$('#alMeta').textContent=out.length?out.length+' ativo(s)':'';
+  logAlerts(out.filter(x=>!x.ia));
 }
 async function loadAnalysis(force){
   const ps=['#powerPanel','#riskPanel','#oppPanel'];ps.forEach(s=>$(s).classList.add('loading'));$('#reAnalyze').disabled=true;
@@ -832,6 +895,7 @@ $('#histBtn').onclick=()=>{const b=$('#histBox'),o=b.hidden;b.hidden=!o;$('#hist
 const SUG=['O que está pressionando o dólar hoje?','Qual o maior risco global agora?','Que oportunidades você vê?','Como está o clima nas capitais?'];
 $('#sugs').innerHTML=SUG.map(s=>`<button type="button" class="chip">${esc(s)}</button>`).join('');
 $('#sugs').addEventListener('click',e=>{if(e.target.classList.contains('chip'))ask(e.target.textContent);});
+$('#cfPro').checked=S.pro;$('#cfPro').onchange=e=>{S.pro=e.target.checked;store.set('pro',S.pro);};
 $('#cfSpeak').onchange=e=>{if(e.target.checked!==S.speak)toggleVoice();};
 $('#cfVoice').onchange=e=>{S.voice=e.target.value;store.set('voice',S.voice);};
 $('#cfRate').oninput=e=>{S.rate=+e.target.value;store.set('rate2',S.rate);};
@@ -846,8 +910,8 @@ $('#cfRate').value=S.rate;$('#cfPitch').value=S.pitch;syncVoiceUI();fillVoices()
 fetch('/api/health').then(r=>r.json()).then(j=>{S.tts=!!j.tts;$('#cfTts').hidden=!S.tts;S.provider=j.provider;$('#provider').textContent='IA: '+(j.ai?(ENG[j.provider]||j.provider):'modo local');
   $('#provHelp').textContent=j.ai?'Converse por voz ou texto com o Zodam.':'Configure GEMINI_API_KEY (grátis) para a IA completa.';applyView();}).catch(()=>{$('#provider').textContent='IA: offline';});
 renderGauge(null);applyView();
-(async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx(),loadHz()]);loadEarth();loadAnalysis(false);})();
-setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(loadHz,10*60e3);setInterval(loadEarth,10*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
+(async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx(),loadHz(),loadSC()]);loadEarth();loadAnalysis(false);})();
+setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(loadHz,10*60e3);setInterval(loadSC,30*60e3);setInterval(loadEarth,10*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
 </script>
 </body>
 </html>

@@ -282,6 +282,7 @@ async function getHazards(force) {
   ]);
   return {
     updated: new Date().toISOString(),
+    doomsday: { seconds: Number(process.env.DOOMSDAY_SECONDS) || 85, set: process.env.DOOMSDAY_SET || '2026-01-27' },
     quakes: quakes.v || [], space: space.v || null, neo: neo.v || null,
     errors: { quakes: quakes.e || null, space: space.e || null, neo: neo.e || null },
   };
@@ -305,6 +306,55 @@ async function getEpic(force) {
     const [y, mo, d] = last.date.slice(0, 10).split('-');
     return { date: last.date, caption: last.caption || '', url: `https://epic.gsfc.nasa.gov/archive/natural/${y}/${mo}/${d}/jpg/${last.image}.jpg` };
   }, force);
+}
+
+/* ---------- saúde global (OMS) e cibersegurança (CISA) ---------- */
+const WHO_FEEDS = [
+  ['OMS · Surtos', 'https://www.who.int/feeds/entity/csr/don/en/rss.xml', false],
+  ['OMS · Notícias', 'https://www.who.int/rss-feeds/news-english.xml', true], // filtrado por palavras de surto
+];
+const OUTBREAK_RE = /outbreak|virus|epidemic|pandemic|cholera|ebola|marburg|mpox|measles|influenza|avian|nipah|dengue|polio|plague|zika|chikungunya|disease|surto|doen[cç]a/i;
+async function getHealthNews() {
+  const rs = await Promise.allSettled(WHO_FEEDS.map(async ([name, url, filter]) => {
+    const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/rss+xml, application/xml, text/xml, */*' }, signal: AbortSignal.timeout(12000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + new URL(url).host);
+    const items = parseRSS(await r.text(), name);
+    return (filter ? items.filter((i) => OUTBREAK_RE.test(i.title)) : items).slice(0, 10);
+  }));
+  const seen = new Set();
+  const items = rs.flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
+    .sort((a, b) => b.ts - a.ts)
+    .filter((i) => { const k = i.title.toLowerCase().slice(0, 60); if (seen.has(k)) return false; seen.add(k); return true; })
+    .slice(0, 6)
+    .map((i) => ({ title: i.title, link: /^https?:\/\//.test(i.link) ? i.link : null, ts: i.ts, src: i.source }));
+  if (!items.length) throw new Error(rs.map((r) => (r.status === 'rejected' ? r.reason.message : 'sem itens')).join(' | '));
+  return items;
+}
+async function getCyber() {
+  const j = await getJSON('https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json');
+  const all = (j.vulnerabilities || []).filter((v) => v.cveID && v.dateAdded).sort((a, b) => (a.dateAdded < b.dateAdded ? 1 : -1));
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  return {
+    total: all.length, week: all.filter((v) => v.dateAdded >= weekAgo).length,
+    recent: all.slice(0, 5).map((v) => ({ cve: v.cveID, vendor: v.vendorProject, product: v.product, name: v.vulnerabilityName, added: v.dateAdded, ransomware: v.knownRansomwareCampaignUse === 'Known' })),
+  };
+}
+async function getSaudeCiber(force) {
+  const [health, cyber] = await Promise.all([
+    cached('sc-h', 30 * 60e3, getHealthNews, force).then((v) => ({ v })).catch((e) => ({ e: e.message })),
+    cached('sc-c', 60 * 60e3, getCyber, force).then((v) => ({ v })).catch((e) => ({ e: e.message })),
+  ]);
+  return { updated: new Date().toISOString(), health: health.v ? { items: health.v } : null, cyber: cyber.v || null, errors: { health: health.e || null, cyber: cyber.e || null } };
+}
+function saudeCiberText(x) {
+  if (!x) return '';
+  const L = ['SAÚDE GLOBAL E CIBER AGORA (OMS, CISA):'];
+  if (x.health) x.health.items.slice(0, 4).forEach((i) => L.push(`- Saúde [${i.src}]: ${i.title}${i.ts ? ' (' + new Date(i.ts).toISOString().slice(0, 10) + ')' : ''}`));
+  if (x.cyber) {
+    L.push(`- Ciber: ${x.cyber.week} vulnerabilidades exploradas ativamente foram adicionadas ao catálogo da CISA nos últimos 7 dias (${x.cyber.total} no total)`);
+    x.cyber.recent.slice(0, 3).forEach((v) => L.push(`  • ${v.cve} ${v.vendor} ${v.product}: ${v.name}${v.ransomware ? ' (usada em ransomware)' : ''}`));
+  }
+  return L.length > 1 ? L.join('\n') : '';
 }
 
 /* ---------- notícias ---------- */
@@ -620,6 +670,7 @@ async function chat(message, history, voice) {
   const jobs = [];
   if (wantsWx) jobs.push(forecastText(message).then((t) => extras.push(t)).catch(() => {}));
   if (TAVILY_KEY && message.trim().length >= 12 && (!wantsWx || /not[ií]cia/i.test(message))) jobs.push(webSearch(message).then((t) => t && extras.push(t)).catch(() => {}));
+  jobs.push(getSaudeCiber().then((x) => { const t = saudeCiberText(x); if (t) extras.push(t); }).catch(() => {}));
   await Promise.all(jobs);
   const style = voice
     ? 'Responda como uma voz falada: no máximo 4 frases curtas, sem markdown, sem listas, sem símbolos, tom calmo e estratégico.'
@@ -698,6 +749,7 @@ const handle = async (req, res) => {
     if (u.pathname === '/api/news') return send(res, 200, await getNews(force));
     if (u.pathname === '/api/weather') return send(res, 200, await getWeather(force).catch((e) => ({ cities: [], error: e.message })));
     if (u.pathname === '/api/epic') return send(res, 200, await getEpic(force).catch((e) => ({ error: e.message })));
+    if (u.pathname === '/api/saude-ciber') return send(res, 200, await getSaudeCiber(force));
     if (u.pathname === '/api/hazards') return send(res, 200, await getHazards(force));
     if (u.pathname === '/api/analysis') return send(res, 200, await getAnalysis(force));
     if (u.pathname === '/api/tts' && req.method === 'POST') {
@@ -732,4 +784,4 @@ if (require.main === module) {
 }
 // Exporta o handler (usado pelas funções da Vercel em /api) e utilitários de teste.
 module.exports = handle;
-Object.assign(module.exports, { getHazards, hazardsText, KP_TXT, parseRSS, project, localAnalysis, toneOf, stats });
+Object.assign(module.exports, { getSaudeCiber, saudeCiberText, getHazards, hazardsText, KP_TXT, parseRSS, project, localAnalysis, toneOf, stats });
