@@ -220,6 +220,82 @@ async function webSearch(query) {
   return L.length > 1 ? L.join('\n') : '';
 }
 
+/* ---------- riscos planetários: terremotos (USGS), clima espacial (NOAA), asteroides (NASA) ---------- */
+const NASA_KEY = process.env.NASA_API_KEY || 'DEMO_KEY';
+async function getQuakes() {
+  const j = await getJSON('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson');
+  return (j.features || [])
+    .filter((f) => f.properties && f.properties.mag != null)
+    .map((f) => ({
+      mag: f.properties.mag, place: f.properties.place || 'local desconhecido', time: f.properties.time,
+      tsunami: !!f.properties.tsunami, alert: f.properties.alert || null, url: f.properties.url || null,
+      lat: f.geometry && f.geometry.coordinates ? f.geometry.coordinates[1] : null,
+      lng: f.geometry && f.geometry.coordinates ? f.geometry.coordinates[0] : null,
+      depth: f.geometry && f.geometry.coordinates ? f.geometry.coordinates[2] : null,
+    }))
+    .sort((a, b) => b.mag - a.mag)
+    .slice(0, 8);
+}
+const KP_TXT = (k) => (k >= 8 ? 'Tempestade geomagnética severa' : k >= 7 ? 'Tempestade geomagnética forte' : k >= 6 ? 'Tempestade geomagnética moderada' : k >= 5 ? 'Tempestade geomagnética leve' : k >= 4 ? 'Sol agitado' : 'Sol calmo');
+async function getSpace() {
+  const kpRaw = await getJSON('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+  let rows = Array.isArray(kpRaw) ? kpRaw : [];
+  if (rows.length && Array.isArray(rows[0])) rows = rows.slice(1).map((r) => ({ time_tag: r[0], Kp: r[1] })); // formato antigo (tabela)
+  const last = rows.filter((r) => r && r.Kp != null && !isNaN(Number(r.Kp))).pop();
+  if (!last) throw new Error('Kp indisponível');
+  const kp = Number(last.Kp);
+  const out = { kp, label: KP_TXT(kp), time: last.time_tag || null, scales: null };
+  try { // escalas NOAA atuais: G (geomagnética), S (radiação solar), R (apagão de rádio)
+    const sc = await getJSON('https://services.swpc.noaa.gov/products/noaa-scales.json');
+    const now = sc && sc['0'];
+    if (now) out.scales = { G: Number(now.G && now.G.Scale) || 0, S: Number(now.S && now.S.Scale) || 0, R: Number(now.R && now.R.Scale) || 0 };
+  } catch {}
+  return out;
+}
+async function getNeo() {
+  const d0 = new Date(), d1 = new Date(Date.now() + 2 * 864e5);
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const j = await getJSON(`https://api.nasa.gov/neo/rest/v1/feed?start_date=${iso(d0)}&end_date=${iso(d1)}&api_key=${encodeURIComponent(NASA_KEY)}`);
+  const all = [];
+  for (const day of Object.values(j.near_earth_objects || {})) {
+    for (const o of day) {
+      const c = (o.close_approach_data || [])[0];
+      if (!c) continue;
+      const dm = (o.estimated_diameter && o.estimated_diameter.meters) || {};
+      all.push({
+        name: String(o.name || '').replace(/[()]/g, '').trim(), hazardous: !!o.is_potentially_hazardous_asteroid,
+        when: c.close_approach_date_full || c.close_approach_date,
+        lunar: Number(c.miss_distance && c.miss_distance.lunar), km: Number(c.miss_distance && c.miss_distance.kilometers),
+        kmh: Number(c.relative_velocity && c.relative_velocity.kilometers_per_hour),
+        dmin: dm.estimated_diameter_min, dmax: dm.estimated_diameter_max, url: o.nasa_jpl_url || null,
+      });
+    }
+  }
+  return { count: all.length, closest: all.filter((x) => isFinite(x.lunar)).sort((a, b) => a.lunar - b.lunar).slice(0, 5) };
+}
+async function getHazards(force) {
+  // Cada fonte falha sozinha: se uma cair, as outras continuam aparecendo.
+  const [quakes, space, neo] = await Promise.all([
+    cached('hz-q', 10 * 60e3, getQuakes, force).then((v) => ({ v })).catch((e) => ({ e: e.message })),
+    cached('hz-s', 10 * 60e3, getSpace, force).then((v) => ({ v })).catch((e) => ({ e: e.message })),
+    cached('hz-n', 6 * 3600e3, getNeo, force).then((v) => ({ v })).catch((e) => ({ e: e.message })),
+  ]);
+  return {
+    updated: new Date().toISOString(),
+    quakes: quakes.v || [], space: space.v || null, neo: neo.v || null,
+    errors: { quakes: quakes.e || null, space: space.e || null, neo: neo.e || null },
+  };
+}
+function hazardsText(h) {
+  if (!h) return '';
+  const L = ['RISCOS PLANETÁRIOS AGORA (USGS, NOAA, NASA):'];
+  if (h.quakes && h.quakes.length) h.quakes.slice(0, 5).forEach((q) => L.push(`- Terremoto M${q.mag.toFixed(1)} em ${q.place}${q.tsunami ? ' (alerta de tsunami)' : ''}`));
+  else L.push('- Terremotos M4.5+ nas últimas 24h: indisponível ou nenhum');
+  if (h.space) L.push(`- Clima espacial: Kp ${h.space.kp} (${h.space.label.toLowerCase()})`);
+  if (h.neo && h.neo.closest.length) h.neo.closest.slice(0, 3).forEach((a) => L.push(`- Asteroide ${a.name}: passa a ${a.lunar.toFixed(1)} distâncias da Lua em ${String(a.when).slice(0, 17)}${a.hazardous ? ' (classificado como potencialmente perigoso pela NASA)' : ''}`));
+  return L.join('\n');
+}
+
 /* ---------- notícias ---------- */
 const FEEDS = [
   ['BBC News', 'https://feeds.bbci.co.uk/news/world/rss.xml'],
@@ -447,7 +523,7 @@ async function askLLM(system, messages, max = 2600, json = false) {
   if (!r.ok) throw new Error((j.error && j.error.message) || 'HTTP ' + r.status);
   return (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
 }
-function snapText(m, n, w) {
+function snapText(m, n, w, h) {
   const L = ['DATA/HORA: ' + new Date().toISOString() + ' (UTC)', '', 'COTAÇÕES (preço | var. dia | var. ~30 pregões | máx/mín 30 pregões):'];
   for (const a of m.assets) {
     if (a.error || a.price == null) { L.push(`- ${a.name}: indisponível`); continue; }
@@ -459,6 +535,7 @@ function snapText(m, n, w) {
     L.push('', 'CLIMA AGORA:');
     w.cities.forEach((c) => L.push(`- ${c.name}: ${c.temp}°C, ${wxDesc(c.code).toLowerCase()}, vento ${c.wind} km/h`));
   }
+  if (h) L.push('', hazardsText(h));
   L.push('', 'MANCHETES RECENTES (fonte | tom automático | título):');
   n.items.slice(0, 40).forEach((i) => L.push(`- [${i.source}] (${i.tone}) ${i.title}`));
   return L.join('\n');
@@ -524,7 +601,7 @@ function localChat(msg, m, n) {
   return out.join(' ');
 }
 async function chat(message, history, voice) {
-  const [m, n, w] = await Promise.all([getMarkets(), getNews(), getWeather().catch(() => null)]);
+  const [m, n, w, h] = await Promise.all([getMarkets(), getNews(), getWeather().catch(() => null), getHazards().catch(() => null)]);
   if (!PROVIDER) return { engine: 'local', answer: localChat(message, m, n) };
   const an = cache.get('analysis');
   const extras = [];
@@ -542,7 +619,7 @@ Se a pesquisa trouxer a resposta, responda e cite o nome do site de onde veio. S
 Em temas de mercado, projeções são cenários, nunca certezas, e você não dá recomendação financeira personalizada; ofereça hipóteses e riscos. Em saúde e direito, informe de forma geral e indique um profissional quando for sério.
 ${style}
 
-${snapText(m, n, w)}
+${snapText(m, n, w, h)}
 ${extras.length ? '\n' + extras.join('\n\n') + '\n' : ''}${an && an.v ? '\nANÁLISE ATUAL DO PAINEL (resumo): ' + JSON.stringify({ resumo: an.v.resumo, risco: an.v.risco_global, oportunidades: an.v.oportunidades }) : ''}`;
   const msgs = (history || []).filter((h) => h && ['user', 'assistant'].includes(h.role) && typeof h.content === 'string').slice(-8).map((h) => ({ role: h.role, content: h.content.slice(0, 2000) }));
   while (msgs.length && msgs[0].role !== 'user') msgs.shift();
@@ -609,6 +686,7 @@ const handle = async (req, res) => {
     if (u.pathname === '/api/markets') return send(res, 200, await getMarkets(force));
     if (u.pathname === '/api/news') return send(res, 200, await getNews(force));
     if (u.pathname === '/api/weather') return send(res, 200, await getWeather(force).catch((e) => ({ cities: [], error: e.message })));
+    if (u.pathname === '/api/hazards') return send(res, 200, await getHazards(force));
     if (u.pathname === '/api/analysis') return send(res, 200, await getAnalysis(force));
     if (u.pathname === '/api/tts' && req.method === 'POST') {
       if (!ELEVEN.key) return send(res, 503, { error: 'ElevenLabs não configurado' });
@@ -642,4 +720,4 @@ if (require.main === module) {
 }
 // Exporta o handler (usado pelas funções da Vercel em /api) e utilitários de teste.
 module.exports = handle;
-Object.assign(module.exports, { parseRSS, project, localAnalysis, toneOf, stats });
+Object.assign(module.exports, { getHazards, hazardsText, KP_TXT, parseRSS, project, localAnalysis, toneOf, stats });

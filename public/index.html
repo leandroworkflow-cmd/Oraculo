@@ -174,6 +174,20 @@ select{background:#0d0a26;color:var(--txt);border:1px solid var(--line2);border-
 .wc svg{width:30px;height:30px;color:var(--am)}
 .wc b{font:600 20px var(--head);color:#fff}
 .wc span{font-size:12px;color:var(--dim)}
+.hz{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.hz>div{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:8px;align-content:start}
+.hz h3{margin:0;font:600 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--vi2)}
+.hz ul{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:13px}
+.hz li{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:baseline}
+.hz li b{font:600 13px var(--mono);min-width:44px}
+.hz li small{display:block;color:var(--dim);font:11px var(--mono)}
+.hz .big{font:600 34px var(--head);color:#fff;line-height:1}
+.hz .kpbar{display:grid;grid-template-columns:repeat(9,1fr);gap:3px}
+.hz .kpbar i{height:8px;border-radius:2px;background:rgba(139,108,255,.18)}
+.hz .kpbar i.on{background:var(--cy)}.hz .kpbar i.on.w{background:var(--am)}.hz .kpbar i.on.d{background:var(--dn)}
+.hz .src{color:var(--dim);font:10px var(--mono)}
+.m-hi{color:var(--dn)}.m-md{color:var(--am)}.m-lo{color:var(--cy)}
+
 .list{display:grid;gap:2px}
 .cr{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:8px 4px;border-bottom:1px solid rgba(139,108,255,.1);cursor:pointer;background:none;border-inline:0;border-top:0;color:inherit;font:inherit;text-align:left;width:100%}
 .cr:hover{background:rgba(139,92,246,.07)}
@@ -223,6 +237,7 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
     <a href="#mercados" data-v="mercados">Mercados</a>
     <a href="#geopolitica" data-v="geopolitica">Geopolítica</a>
     <a href="#clima" data-v="clima">Clima</a>
+    <a href="#planeta" data-v="planeta">Planeta</a>
     <a href="#commodities" data-v="commodities">Commodities</a>
     <a href="#alertas" data-v="alertas">Alertas</a>
     <a href="#previsoes" data-v="previsoes">Previsões</a>
@@ -280,6 +295,11 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
     <section class="panel s4" data-views="dashboard commodities" aria-labelledby="h-cm">
       <div class="ph"><h2 id="h-cm">Commodities</h2><a class="link" href="#commodities">Ver todas</a></div>
       <div class="list" id="comm"></div>
+    </section>
+
+    <section class="panel s12" data-views="dashboard planeta" aria-labelledby="h-hz">
+      <div class="ph"><h2 id="h-hz">Riscos Planetários</h2><span class="badge" id="hzMeta"></span></div>
+      <div class="hz" id="hz"><p class="empty">Carregando riscos planetários...</p></div>
     </section>
 
     <section class="panel s4" data-views="dashboard alertas" aria-labelledby="h-al">
@@ -360,7 +380,7 @@ const dec=a=>a.unit==='%'?3:(a.price>=10000?0:(a.price<20?(a.price<10?4:2):2));
 const sg=n=>n==null?'n/d':(n>=0?'+':'')+nf(n,2)+'%';
 const arrow=n=>n==null?'':(n>=0?'▲':'▼');
 const cls=n=>n>=0?'up':'dn';
-const VIEWS=['dashboard','mercados','geopolitica','clima','commodities','alertas','previsoes','relatorios','config'];
+const VIEWS=['dashboard','mercados','geopolitica','clima','planeta','commodities','alertas','previsoes','relatorios','config'];
 const ENG={gemini:'Gemini (grátis)',groq:'Groq / Llama (grátis)',anthropic:'Claude',local:'modo local'};
 
 /* relógio */
@@ -464,6 +484,24 @@ function renderWx(){
 }
 async function loadWx(){try{const j=await (await fetch('/api/weather')).json();S.wx=j.cities||[];}catch{S.wx=[];}renderWx();renderAlerts();}
 
+/* ---------- riscos planetários ---------- */
+const magCls=m=>m>=6.5?'m-hi':m>=5.5?'m-md':'m-lo';
+const kpCls=k=>k>=7?'d':k>=5?'w':'';
+function hzDate(ts){return ts?new Date(ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}):'';}
+function renderHz(){
+  const h=S.hz;if(!h){$('#hz').innerHTML='<p class="empty">Riscos planetários indisponíveis agora.</p>';return;}
+  const er=h.errors||{};
+  const q=h.quakes&&h.quakes.length?`<ul>${h.quakes.map(x=>`<li><b class="${magCls(x.mag)}">M${nf(x.mag,1)}</b><span>${esc(x.place)}${x.tsunami?' · <span class="m-hi">alerta de tsunami</span>':''}<small>${hzDate(x.time)}${x.depth!=null?' · prof. '+nf(x.depth,0)+' km':''}</small></span></li>`).join('')}</ul>`:`<p class="empty">${er.quakes?'Fonte USGS indisponível agora.':'Nenhum terremoto M4.5+ nas últimas 24 h.'}</p>`;
+  let sp='<p class="empty">Fonte NOAA indisponível agora.</p>';
+  if(h.space){const k=h.space.kp,on=Math.round(k);sp=`<div class="big">Kp ${nf(k,1)}</div><strong style="font-size:13px">${esc(h.space.label)}</strong><div class="kpbar">${Array.from({length:9},(_,i)=>`<i class="${i<on?'on '+kpCls(k):''}"></i>`).join('')}</div>${h.space.scales?`<span class="src">Escalas NOAA agora: G${h.space.scales.G} · S${h.space.scales.S} · R${h.space.scales.R}</span>`:''}`;}
+  let ne='<p class="empty">Fonte NASA indisponível agora.</p>';
+  if(h.neo){ne=h.neo.closest.length?`<ul>${h.neo.closest.map(a=>`<li><b class="${a.hazardous?'m-md':'m-lo'}">${nf(a.lunar,1)} LD</b><span>${esc(a.name)}${a.hazardous?' · <span class="m-md">potencialmente perigoso</span>':''}<small>${esc(String(a.when).slice(0,17))} · ${nf(a.dmin,0)}–${nf(a.dmax,0)} m · ${nf(a.kmh,0)} km/h</small></span></li>`).join('')}</ul><span class="src">LD = distância Terra–Lua. ${h.neo.count} objetos nos próximos 3 dias.</span>`:'<p class="empty">Nenhuma aproximação listada.</p>';}
+  $('#hz').innerHTML=`<div><h3>Terremotos · 24 h</h3>${q}<span class="src">Fonte: USGS</span></div><div><h3>Clima espacial</h3>${sp}<span class="src">Fonte: NOAA SWPC</span></div><div><h3>Asteroides próximos</h3>${ne}<span class="src">Fonte: NASA NeoWs</span></div>`;
+  const bad=(h.quakes||[]).filter(x=>x.mag>=6).length+((h.space&&h.space.kp>=5)?1:0);
+  $('#hzMeta').textContent=bad?bad+' em destaque':'';
+}
+async function loadHz(){try{S.hz=await (await fetch('/api/hazards')).json();}catch{S.hz=null;}renderHz();renderAlerts();}
+
 /* ---------- análise ---------- */
 function gaugeColor(s){return s<35?'var(--up)':s<55?'var(--cy)':s<75?'var(--am)':'var(--dn)';}
 function renderGauge(r){
@@ -498,6 +536,11 @@ function renderAlerts(){
   const out=[];const a=S.analysis;
   ((a&&a.alertas)||[]).forEach(x=>out.push(typeof x==='string'?{texto:x,nivel:'medio'}:{texto:x.texto,nivel:x.nivel||'medio'}));
   S.wx.forEach(c=>{if(c.code>=95)out.push({texto:'Tempestade em '+c.name,nivel:'alto'});else if([65,66,67,75,82,86].includes(c.code))out.push({texto:'Chuva forte ou neve em '+c.name,nivel:'medio'});});
+  const hz=S.hz;if(hz){
+    (hz.quakes||[]).forEach(x=>{if(x.mag>=6.5||x.tsunami)out.push({texto:`Terremoto M${nf(x.mag,1)} em ${x.place}${x.tsunami?' (alerta de tsunami)':''}`,nivel:'alto'});else if(x.mag>=6)out.push({texto:`Terremoto M${nf(x.mag,1)} em ${x.place}`,nivel:'medio'});});
+    if(hz.space&&hz.space.kp>=5)out.push({texto:`${hz.space.label} (Kp ${nf(hz.space.kp,1)})`,nivel:hz.space.kp>=7?'alto':'medio'});
+    const a0=hz.neo&&hz.neo.closest&&hz.neo.closest[0];if(a0&&a0.hazardous&&a0.lunar<=5)out.push({texto:`Asteroide ${a0.name} passa a ${nf(a0.lunar,1)} distâncias da Lua`,nivel:'medio'});
+  }
   $('#alerts').innerHTML=out.length?out.map(x=>`<li><i class="n-${esc(String(x.nivel).replace('é','e'))}"></i><span>${esc(x.texto)}</span></li>`).join(''):'<li class="empty">Sem alertas no momento.</li>';
   $('#bell').textContent=out.length;$('#alMeta').textContent=out.length?out.length+' ativo(s)':'';
 }
@@ -765,8 +808,8 @@ $('#cfRate').value=S.rate;$('#cfPitch').value=S.pitch;syncVoiceUI();fillVoices()
 fetch('/api/health').then(r=>r.json()).then(j=>{S.tts=!!j.tts;$('#cfTts').hidden=!S.tts;S.provider=j.provider;$('#provider').textContent='IA: '+(j.ai?(ENG[j.provider]||j.provider):'modo local');
   $('#provHelp').textContent=j.ai?'Converse por voz ou texto com o Zodam.':'Configure GEMINI_API_KEY (grátis) para a IA completa.';applyView();}).catch(()=>{$('#provider').textContent='IA: offline';});
 renderGauge(null);applyView();
-(async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx()]);loadAnalysis(false);})();
-setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
+(async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx(),loadHz()]);loadAnalysis(false);})();
+setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(loadHz,10*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
 </script>
 </body>
 </html>
