@@ -55,6 +55,17 @@ Yahoo Finance (cotações, endpoint público não oficial), AwesomeAPI e CoinGec
 - Ativos: lista `ASSETS` em `server.js`. Jornais: lista `FEEDS`. Cidades do clima: lista `CITIES`.
 - Visual e voz: `public/index.html`.
 
+## PRIVATE URBAN INTELLIGENCE (câmeras de Belo Horizonte, só você)
+
+Aba **Urbano BH 🔒** no menu. Nada é público: sem a chave, a API devolve 401.
+
+1. Defina `URBAN_ACCESS_KEY` (chave longa, ex.: `openssl rand -base64 24`) no `.env` e na Vercel. Sem ela o módulo fica desligado.
+2. Cadastre as câmeras em `URBAN_CAMERAS` (JSON em uma linha) ou no arquivo `cameras.json` (local, ignorado pelo git). Modelo em `cameras.example.json`. Na Vercel use a variável, porque o `cameras.json` não sobe para o GitHub.
+3. Tipos: `imagem` (foto que atualiza a cada N segundos, passa pelo servidor e a URL original não chega ao navegador), `hls` (.m3u8) e `embed` (iframe).
+4. Use só fontes autorizadas (órgãos públicos que liberam as imagens, ou câmeras suas).
+
+Recursos: login com cookie assinado (12 h, bloqueio após 5 tentativas erradas), filtro por região (Centro, Savassi, Pampulha, Belvedere ou todas), mapa, mosaico com várias câmeras e botão "Zodam: analisar" (clima de BH e contexto das câmeras; o Zodam não enxerga as imagens).
+
 ## Aviso
 
 Conteúdo informativo. Projeções são cenários e extrapolações, não previsões, e nada aqui é recomendação de investimento.

@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Zodam AI</title>
@@ -239,6 +240,20 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
 .set input[type=range]{width:100%}
 .foot{margin:18px 0 0;font:11px/1.6 var(--mono);color:var(--dim)}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
+
+/* ---- PRIVATE URBAN INTELLIGENCE ---- */
+.ub-login{display:grid;gap:10px;max-width:360px}
+.ub-login input{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:12px;padding:10px 14px;color:var(--txt);font:14px var(--mono)}
+.ub-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.ub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;margin-top:12px}
+.ub-cam{position:relative;background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden;aspect-ratio:16/9}
+.ub-cam img,.ub-cam video,.ub-cam iframe{width:100%;height:100%;object-fit:cover;border:0;display:block}
+.ub-cam .lb{position:absolute;left:0;right:0;top:0;padding:6px 10px;font:600 11px var(--mono);color:#fff;background:linear-gradient(#000a,transparent);display:flex;justify-content:space-between;gap:8px}
+.ub-cam .x{background:none;border:0;color:#fff;cursor:pointer;font-size:14px}
+.ub-cam .er{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim);font:12px var(--mono);text-align:center;padding:12px}
+#ubMap{height:340px;border-radius:14px;border:1px solid var(--line);margin-top:6px}
+.leaflet-tile-pane{filter:invert(1) hue-rotate(200deg) brightness(.8) contrast(.9)}
+.ub-ai{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:rgba(139,92,246,.08);font:13px/1.5 var(--body);white-space:pre-wrap}
 </style>
 </head>
 <body data-view="dashboard" data-ai="idle">
@@ -256,6 +271,7 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
     <a href="#alertas" data-v="alertas">Alertas</a>
     <a href="#previsoes" data-v="previsoes">Previsões</a>
     <a href="#relatorios" data-v="relatorios">Relatórios</a>
+    <a href="#urbano" data-v="urbano">Urbano BH 🔒</a>
     <a href="#config" data-v="config">Configurações</a>
   </nav>
   <div class="sidefoot"><b id="provider">IA: ...</b><span id="provHelp">Converse por voz ou texto com o Zodam.</span></div>
@@ -381,6 +397,25 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
       <div class="news" id="news"></div>
     </section>
 
+
+    <section class="panel s12" data-views="urbano" aria-labelledby="h-ub">
+      <div class="ph"><h2 id="h-ub">PRIVATE URBAN INTELLIGENCE · Belo Horizonte</h2><button class="link" type="button" id="ubSair" hidden>Sair</button></div>
+      <div id="ubLogin" class="ub-login">
+        <p class="note">Área privada. Digite a chave de acesso para ver as câmeras.</p>
+        <input id="ubKey" type="password" placeholder="Chave de acesso" autocomplete="current-password">
+        <button class="btn" type="button" id="ubEntrar">Entrar</button>
+        <p class="note" id="ubErr"></p>
+      </div>
+      <div id="ubApp" hidden>
+        <div class="ub-bar" id="ubRegs"></div>
+        <div id="ubMap"></div>
+        <div class="ub-bar" style="margin-top:12px"><button class="btn" type="button" id="ubAll">Abrir todas da região</button><button class="btn" type="button" id="ubClose">Fechar todas</button><button class="btn" type="button" id="ubAI">Zodam: analisar</button></div>
+        <div class="ub-ai" id="ubTxt" hidden></div>
+        <div class="ub-grid" id="ubGrid"></div>
+        <p class="note" id="ubEmpty" hidden>Nenhuma câmera cadastrada. Use cameras.example.json como modelo (arquivo cameras.json ou variável URBAN_CAMERAS) com fontes autorizadas.</p>
+      </div>
+    </section>
+
     <section class="panel s12" data-views="config" aria-labelledby="h-cf">
       <div class="ph"><h2 id="h-cf">Configurações</h2></div>
       <div class="set">
@@ -415,7 +450,7 @@ const dec=a=>a.unit==='%'?3:(a.price>=10000?0:(a.price<20?(a.price<10?4:2):2));
 const sg=n=>n==null?'n/d':(n>=0?'+':'')+nf(n,2)+'%';
 const arrow=n=>n==null?'':(n>=0?'▲':'▼');
 const cls=n=>n>=0?'up':'dn';
-const VIEWS=['dashboard','mercados','geopolitica','clima','planeta','terra','commodities','alertas','previsoes','relatorios','config'];
+const VIEWS=['dashboard','mercados','geopolitica','clima','planeta','terra','commodities','alertas','previsoes','relatorios','urbano','config'];
 const ENG={gemini:'Gemini (grátis)',groq:'Groq / Llama (grátis)',anthropic:'Claude',local:'modo local'};
 
 /* relógio */
@@ -912,6 +947,92 @@ fetch('/api/health').then(r=>r.json()).then(j=>{S.tts=!!j.tts;$('#cfTts').hidden
 renderGauge(null);applyView();
 (async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx(),loadHz(),loadSC()]);loadEarth();loadAnalysis(false);})();
 setInterval(loadMarkets,60e3);setInterval(loadNews,10*60e3);setInterval(loadWx,15*60e3);setInterval(loadHz,10*60e3);setInterval(loadSC,30*60e3);setInterval(loadEarth,10*60e3);setInterval(()=>loadAnalysis(false),15*60e3);
+</script>
+<script>
+(()=>{
+const U={cams:[],reg:'',open:new Set(),map:null,marks:{},timers:{}};
+const $u=s=>document.querySelector(s);
+const api=(a,o)=>fetch('/api/urbano?acao='+a,o);
+const REG=['Centro','Savassi','Pampulha','Belvedere','Barreiro'];
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+async function check(){
+  try{const r=await api('status');if(r.status===503){const j=await r.json();$u('#ubErr').textContent=j.error;return;}
+    if(r.ok){await enter();}else{$u('#ubLogin').hidden=false;$u('#ubApp').hidden=true;}}catch{}
+}
+async function login(){
+  $u('#ubErr').textContent='';
+  const r=await api('login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chave:$u('#ubKey').value})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){$u('#ubErr').textContent=j.error||'Falha no login.';return;}
+  $u('#ubKey').value='';await enter();
+}
+async function enter(){
+  const r=await api('cameras');if(!r.ok)return;
+  U.cams=(await r.json()).cameras||[];
+  $u('#ubLogin').hidden=true;$u('#ubApp').hidden=false;$u('#ubSair').hidden=false;
+  $u('#ubEmpty').hidden=U.cams.length>0;
+  regs();initMap();paint();
+}
+function regs(){
+  const all=[...new Set([...REG,...U.cams.map(c=>c.regiao)])];
+  $u('#ubRegs').innerHTML=['Todas',...all].map(n=>`<button class="btn" type="button" data-r="${n==='Todas'?'':esc(n)}" aria-pressed="${(n==='Todas'?'':n)===U.reg}">${esc(n)}</button>`).join('');
+}
+function visible(){return U.cams.filter(c=>!U.reg||c.regiao===U.reg);}
+function initMap(){
+  if(U.map||!window.L)return;
+  U.map=L.map('ubMap').setView([-19.9167,-43.9345],12);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(U.map);
+}
+function paint(){
+  if(U.map){setTimeout(()=>U.map.invalidateSize(),50);
+    Object.values(U.marks).forEach(m=>m.remove());U.marks={};
+    const vs=visible();
+    vs.forEach(c=>{const m=L.marker([c.lat,c.lng]).addTo(U.map).bindTooltip(c.nome);m.on('click',()=>{U.open.add(c.id);grid();});U.marks[c.id]=m;});
+    if(vs.length)U.map.fitBounds(vs.map(c=>[c.lat,c.lng]),{padding:[30,30],maxZoom:15});}
+  grid();
+}
+function stop(id){clearInterval(U.timers[id]);delete U.timers[id];}
+function grid(){
+  Object.keys(U.timers).forEach(stop);
+  const g=$u('#ubGrid');g.innerHTML='';
+  U.cams.filter(c=>U.open.has(c.id)).forEach(c=>{
+    const d=document.createElement('div');d.className='ub-cam';
+    d.innerHTML=`<div class="lb"><span>${esc(c.nome)}</span><button class="x" type="button" title="Fechar" aria-label="Fechar">✕</button></div>`;
+    d.querySelector('.x').onclick=()=>{U.open.delete(c.id);grid();};
+    const er=m=>{let e=d.querySelector('.er');if(!e){e=document.createElement('div');e.className='er';d.append(e);}e.textContent=m;};
+    if(c.tipo==='imagem'){
+      const im=new Image();im.alt=c.nome;d.append(im);
+      const tick=()=>{im.src='/api/urbano?acao=snap&id='+encodeURIComponent(c.id)+'&t='+Date.now();};
+      im.onerror=()=>er('Sem imagem agora');im.onload=()=>d.querySelector('.er')?.remove();
+      tick();U.timers[c.id]=setInterval(tick,c.atualizar*1000);
+    }else if(c.tipo==='embed'){
+      const f=document.createElement('iframe');f.src=c.url;f.allow='autoplay;fullscreen';f.referrerPolicy='no-referrer';d.append(f);
+    }else{
+      const v=document.createElement('video');v.muted=true;v.autoplay=true;v.playsInline=true;v.controls=true;d.append(v);
+      if(v.canPlayType('application/vnd.apple.mpegurl'))v.src=c.url;
+      else loadHls().then(()=>{if(window.Hls&&Hls.isSupported()){const h=new Hls();h.loadSource(c.url);h.attachMedia(v);h.on(Hls.Events.ERROR,(_,e)=>{if(e.fatal)er('Transmissão indisponível');});}else er('Navegador sem suporte a HLS');});
+    }
+    g.append(d);
+  });
+}
+let hlsP;function loadHls(){return hlsP||(hlsP=new Promise(ok=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';s.onload=ok;s.onerror=ok;document.head.append(s);}));}
+async function analyze(){
+  const t=$u('#ubTxt');t.hidden=false;t.textContent='Zodam analisando...';
+  try{const r=await api('analise&regiao='+encodeURIComponent(U.reg));const j=await r.json();t.textContent=j.texto||j.error||'Sem resposta.';}catch{t.textContent='Falha na análise.';}
+}
+function boot(){
+  if(!window.L){const l=document.createElement('script');l.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';l.onload=()=>{if(U.cams.length)initMap(),paint();};document.head.append(l);}
+  $u('#ubEntrar').onclick=login;$u('#ubKey').onkeydown=e=>{if(e.key==='Enter')login();};
+  $u('#ubSair').onclick=async()=>{await api('sair');U.cams=[];U.open.clear();Object.keys(U.timers).forEach(stop);$u('#ubGrid').innerHTML='';$u('#ubApp').hidden=true;$u('#ubLogin').hidden=false;$u('#ubSair').hidden=true;};
+  $u('#ubRegs').onclick=e=>{const b=e.target.closest('[data-r]');if(!b)return;U.reg=b.dataset.r;regs();paint();};
+  $u('#ubAll').onclick=()=>{visible().forEach(c=>U.open.add(c.id));grid();};
+  $u('#ubClose').onclick=()=>{U.open.clear();grid();};
+  $u('#ubAI').onclick=analyze;
+  addEventListener('hashchange',()=>{if(location.hash==='#urbano'){check();if(U.map)setTimeout(()=>U.map.invalidateSize(),100);}else Object.keys(U.timers).forEach(stop);});
+  if(location.hash==='#urbano')check();
+}
+boot();
+})();
 </script>
 </body>
 </html>

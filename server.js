@@ -740,6 +740,7 @@ const readBody = (req) => new Promise((ok, no) => {
   req.on('error', no);
 });
 
+const urbano = require('./urbano.js');
 const handle = async (req, res) => {
   try {
     const u = new URL(req.url, 'http://localhost');
@@ -752,6 +753,7 @@ const handle = async (req, res) => {
     if (u.pathname === '/api/saude-ciber') return send(res, 200, await getSaudeCiber(force));
     if (u.pathname === '/api/hazards') return send(res, 200, await getHazards(force));
     if (u.pathname === '/api/analysis') return send(res, 200, await getAnalysis(force));
+    if (u.pathname === '/api/urbano') return urbano(req, res, u, { send, readBody, sameOrigin, askLLM, getJSON, hasAI: () => !!PROVIDER });
     if (u.pathname === '/api/tts' && req.method === 'POST') {
       if (!ELEVEN.key) return send(res, 503, { error: 'ElevenLabs não configurado' });
       if (!sameOrigin(req)) return send(res, 403, { error: 'origem não permitida' });

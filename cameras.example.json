@@ -1,0 +1,23 @@
+[
+  {
+    "id": "centro-01",
+    "nome": "Exemplo: Av. Afonso Pena x Rua da Bahia",
+    "regiao": "Centro",
+    "lat": -19.9208,
+    "lng": -43.9378,
+    "tipo": "imagem",
+    "url": "COLE-AQUI-A-URL-DA-IMAGEM-AUTORIZADA.jpg",
+    "atualizar": 10,
+    "fonte": "nome da fonte autorizada"
+  },
+  {
+    "id": "pampulha-01",
+    "nome": "Exemplo: Pampulha (transmissão HLS)",
+    "regiao": "Pampulha",
+    "lat": -19.8519,
+    "lng": -43.9697,
+    "tipo": "hls",
+    "url": "COLE-AQUI-A-URL-.m3u8-AUTORIZADA",
+    "fonte": "nome da fonte autorizada"
+  }
+]
