@@ -32,6 +32,13 @@ const wanted = (process.env.AI_PROVIDER || '').toLowerCase();
 const PROVIDER = wanted && KEYS[wanted] ? wanted : KEYS.gemini ? 'gemini' : KEYS.groq ? 'groq' : KEYS.anthropic ? 'anthropic' : '';
 const UA = 'Mozilla/5.0 (compatible; ZodamAI/1.0)';
 
+// Voz do Zodam (ElevenLabs). Brian é uma voz padrão descrita como grave; troque por ELEVENLABS_VOICE_ID.
+const ELEVEN = {
+  key: process.env.ELEVENLABS_API_KEY || '',
+  voice: process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb',
+  model: process.env.ELEVENLABS_MODEL || 'eleven_flash_v2_5',
+};
+
 /* ---------- utilidades ---------- */
 const cache = new Map();
 async function cached(key, ttl, fn, force) {
@@ -480,6 +487,41 @@ ${an && an.v ? '\nANÁLISE ATUAL DO PAINEL (resumo): ' + JSON.stringify({ resumo
   catch (e) { return { engine: 'local', answer: localChat(message, m, n) + ' Falha na IA: ' + e.message }; }
 }
 
+/* ---------- voz (ElevenLabs) ---------- */
+const sameOrigin = (req) => {
+  const o = req.headers.origin;
+  if (!o) return true;
+  try { return new URL(o).host === req.headers.host; } catch { return false; }
+};
+const hits = [];
+function allow(max) {
+  const now = Date.now();
+  while (hits.length && now - hits[0] > 60e3) hits.shift();
+  if (hits.length >= max) return false;
+  hits.push(now);
+  return true;
+}
+async function tts(text) {
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(ELEVEN.voice)}?output_format=mp3_44100_64`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'audio/mpeg', 'xi-api-key': ELEVEN.key },
+    body: JSON.stringify({
+      text, model_id: ELEVEN.model,
+      voice_settings: { stability: 0.55, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true },
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    const d = j.detail;
+    const msg = (d && (d.message || d.status)) || (typeof d === 'string' ? d : '') || 'HTTP ' + r.status;
+    const e = new Error(msg);
+    e.status = r.status;
+    throw e;
+  }
+  return Buffer.from(await r.arrayBuffer());
+}
+
 /* ---------- HTTP ---------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json' };
 const send = (res, code, body, type = 'application/json; charset=utf-8') => {
@@ -499,12 +541,23 @@ const handle = async (req, res) => {
   try {
     const u = new URL(req.url, 'http://localhost');
     const force = u.searchParams.get('refresh') === '1';
-    if (u.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!PROVIDER, provider: PROVIDER || null, model: PROVIDER ? MODELS[PROVIDER] : null });
+    if (u.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!PROVIDER, provider: PROVIDER || null, model: PROVIDER ? MODELS[PROVIDER] : null, tts: !!ELEVEN.key });
     if (u.pathname === '/api/markets') return send(res, 200, await getMarkets(force));
     if (u.pathname === '/api/news') return send(res, 200, await getNews(force));
     if (u.pathname === '/api/weather') return send(res, 200, await getWeather(force).catch((e) => ({ cities: [], error: e.message })));
     if (u.pathname === '/api/analysis') return send(res, 200, await getAnalysis(force));
+    if (u.pathname === '/api/tts' && req.method === 'POST') {
+      if (!ELEVEN.key) return send(res, 503, { error: 'ElevenLabs não configurado' });
+      if (!sameOrigin(req)) return send(res, 403, { error: 'origem não permitida' });
+      if (!allow(25)) return send(res, 429, { error: 'muitas requisições de voz, aguarde um minuto' });
+      const b = JSON.parse((await readBody(req)) || '{}');
+      const text = String(b.text || '').replace(/\s+/g, ' ').trim().slice(0, 420);
+      if (!text) return send(res, 400, { error: 'texto vazio' });
+      try { return send(res, 200, await tts(text), 'audio/mpeg'); }
+      catch (e) { return send(res, e.status && e.status >= 400 && e.status < 600 ? e.status : 502, { error: e.message }); }
+    }
     if (u.pathname === '/api/chat' && req.method === 'POST') {
+      if (!sameOrigin(req)) return send(res, 403, { error: 'origem não permitida' });
       const b = JSON.parse((await readBody(req)) || '{}');
       if (!b.message || typeof b.message !== 'string') return send(res, 400, { error: 'mensagem vazia' });
       return send(res, 200, await chat(b.message, b.history, !!b.voice));

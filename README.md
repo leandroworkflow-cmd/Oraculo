@@ -16,7 +16,16 @@ O modelo padrão do Groq é o `openai/gpt-oss-120b`. Os provedores aposentam mod
 
 Sem nenhuma chave, o painel funciona em modo local: o risco sai de regras, as projeções são estatísticas e o chat responde cotações e manchetes. Os limites do plano gratuito mudam com o tempo; o servidor guarda a análise em cache por 15 minutos para gastar poucas chamadas.
 
-A voz (falar e ouvir) vem do próprio navegador, sem custo. Use Chrome ou Edge; o microfone pede permissão na primeira vez.
+## Voz do Zodam (masculina e grave)
+
+O Groq não tem voz em português, então a voz vem de outro lugar:
+
+- **ElevenLabs (recomendado):** crie uma conta grátis em https://elevenlabs.io, vá em Profile → API Keys e coloque a chave em `ELEVENLABS_API_KEY`. O painel passa a falar com a voz Brian (grave), e a boca do Zodam acompanha o volume do áudio. O plano grátis tem uma cota mensal de créditos; o modelo padrão (`eleven_flash_v2_5`) gasta metade. Se a cota acabar ou a chave falhar, o painel avisa e usa a voz do navegador. Troque a voz com `ELEVENLABS_VOICE_ID` (vozes da biblioteca podem ser bloqueadas no plano grátis; as vozes padrão funcionam). Em Configurações, o controle de profundidade deixa a voz mais grave.
+- **Voz do navegador (sem custo, sem chave):** use o Microsoft Edge, que tem a voz masculina "Microsoft Antonio Online (Natural)". O Chrome só tem voz feminina em português.
+
+A rota `/api/tts` só aceita chamadas do próprio site, limita o texto a 420 caracteres e a 25 pedidos por minuto, para proteger a sua cota. Se o site for público, qualquer visitante que falar com o Zodam gasta créditos; para parar, apague a variável `ELEVENLABS_API_KEY`.
+
+O microfone (falar com o Zodam) usa o reconhecimento de voz do Chrome ou do Edge e pede permissão na primeira vez.
 
 ## Rodar no computador
 

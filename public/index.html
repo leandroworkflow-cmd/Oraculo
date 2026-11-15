@@ -101,7 +101,9 @@ body[data-ai=speak] .state i{background:var(--up);box-shadow:0 0 10px var(--up);
 #histBox .u{background:rgba(56,189,248,.10)}
 .oracle{position:relative;min-height:340px;overflow:hidden;isolation:isolate;
   -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18%);mask-image:linear-gradient(90deg,transparent 0,#000 18%)}
-.oracle .zimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 18%;animation:float 7s ease-in-out infinite;transform-origin:50% 40%}
+.oracle .fig{position:absolute;left:0;top:0;width:100%;height:100%;animation:float 7s ease-in-out infinite;transform-origin:50% 40%}
+.oracle .zimg{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 18%}
+.oracle .fig canvas{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 @keyframes float{50%{transform:translateY(-6px) scale(1.012)}}
 .oracle::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;box-shadow:inset 0 0 0 0 rgba(56,189,248,0);transition:box-shadow .4s}
 .oracle .glow{position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(60% 55% at 50% 38%,rgba(56,189,248,.0),transparent 70%);transition:background .4s}
@@ -115,7 +117,7 @@ body[data-ai=listen] .oracle .glow{background:radial-gradient(60% 55% at 50% 38%
 body[data-ai=think] .oracle .scan{opacity:1;animation:sweep 1.5s linear infinite}
 body[data-ai=think] .oracle .glow{background:radial-gradient(60% 55% at 50% 38%,rgba(251,191,36,.14),transparent 70%)}
 body[data-ai=speak] .oracle .glow{animation:talk .55s ease-in-out infinite alternate}
-body[data-ai=speak] .oracle .zimg{animation:float 7s ease-in-out infinite,hum .5s ease-in-out infinite alternate}
+body[data-ai=speak] .oracle .fig{animation:float 7s ease-in-out infinite,hum .5s ease-in-out infinite alternate}
 body[data-ai=speak] .oracle .eq{opacity:1}
 body[data-ai=speak] .oracle .eq i{animation:bar .5s ease-in-out infinite alternate}
 .oracle .eq i:nth-child(2n){animation-duration:.38s}.oracle .eq i:nth-child(3n){animation-duration:.62s}.oracle .eq i:nth-child(5n){animation-duration:.45s}
@@ -244,14 +246,15 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
         <p>Mercados, geopolítica e clima conectados por IA. Fale ou digite: o Zodam responde com base nos dados da tela.</p>
         <div class="state"><i></i><span id="orbState">Pronta</span></div>
         <div id="cap" aria-live="polite">Olá, eu sou o Zodam. Pergunte sobre os mercados, o risco global, as notícias ou o clima.</div>
+        <p class="note" id="vwarn" role="alert" hidden style="color:var(--am)"></p>
         <form class="ask" id="ask"><input id="cin" autocomplete="off" placeholder="Pergunte ao Zodam..." aria-label="Sua pergunta"><button class="mic" type="button" id="mic" aria-pressed="false" aria-label="Falar com a IA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button class="btn" type="submit">Enviar</button></form>
         <div class="row" id="sugs"></div>
         <div class="row"><button class="btn" id="voiceBtn" aria-pressed="false">Ativar voz</button><button class="btn" id="sumBtn">Ouvir resumo do dia</button><button class="btn" id="histBtn" aria-pressed="false">Ver conversa</button></div>
         <div id="histBox" hidden></div>
       </div>
       <div class="oracle" id="oracle" role="img" aria-label="Zodam, a inteligência central em forma de holograma">
-        <img class="zimg" src="zodam.jpg" alt="" width="1000" height="885" fetchpriority="high">
-        <div class="glow"></div><div class="scan"></div><div class="ring"></div>
+        <div class="fig" id="fig"><img class="zimg" id="zimg" src="zodam.jpg" alt="" width="1000" height="885" fetchpriority="high"><canvas id="jaw" width="1333" height="1180" aria-hidden="true"></canvas></div>
+                <div class="glow"></div><div class="scan"></div><div class="ring"></div>
         <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       </div>
     </section>
@@ -328,10 +331,15 @@ ul.fat li::before{content:"› ";color:var(--vi2)}
       <div class="ph"><h2 id="h-cf">Configurações</h2></div>
       <div class="set">
         <label><span><input type="checkbox" id="cfSpeak"> Falar as respostas em voz alta</span></label>
-        <label>Voz<select id="cfVoice"><option value="">Automática (português do Brasil)</option></select></label>
+        <div id="cfTts" hidden class="set">
+          <label>Motor de voz<select id="cfEngine"><option value="eleven">ElevenLabs (voz masculina grave)</option><option value="browser">Voz do navegador</option></select></label>
+          <label>Profundidade da voz (mais grave à esquerda) <input type="range" id="cfDeep" min="0.84" max="1" step="0.01"></label>
+        </div>
+        <label>Voz do navegador<select id="cfVoice"><option value="">Automática (português do Brasil)</option></select></label>
         <label>Velocidade <input type="range" id="cfRate" min="0.7" max="1.3" step="0.05"></label>
         <label>Tom (mais grave à esquerda) <input type="range" id="cfPitch" min="0.5" max="1.4" step="0.05"></label>
         <button class="btn" type="button" id="cfTest">Testar voz</button>
+        <p class="note" id="cfVoices"></p>
         <p class="note" id="cfInfo"></p>
       </div>
     </section>
@@ -346,7 +354,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const nf=(n,d)=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
 const store={get(k,d){try{const v=localStorage.getItem('zodam.'+k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem('zodam.'+k,JSON.stringify(v))}catch{}}};
 const S={assets:[],news:[],analysis:null,wx:[],sel:'spx',range:60,view:'dashboard',q:'',tone:'all',src:'all',
-  speak:store.get('speak',false),rate:store.get('rate',.95),pitch:store.get('pitch',.8),voice:store.get('voice',''),hist:[],rec:null,provider:null};
+  speak:store.get('speakOn',true),tts:false,engine:store.get('engine','eleven'),deep:store.get('deep',.93),rate:store.get('rate2',.9),pitch:store.get('pitch2',.55),voice:store.get('voice',''),hist:[],rec:null,provider:null};
 const A=id=>S.assets.find(a=>a.id===id);
 const dec=a=>a.unit==='%'?3:(a.price>=10000?0:(a.price<20?(a.price<10?4:2):2));
 const sg=n=>n==null?'n/d':(n>=0?'+':'')+nf(n,2)+'%';
@@ -538,19 +546,145 @@ function setState(s){
 /* ---------- voz ---------- */
 const hasTTS='speechSynthesis' in window;
 function cleanSpeech(t){return String(t).replace(/https?:\/\/\S+/g,'').replace(/[*_#`>|]/g,'').replace(/\s*\n+\s*/g,'. ').replace(/\s{2,}/g,' ').trim();}
-function pickVoice(){if(!hasTTS)return null;const v=speechSynthesis.getVoices();return v.find(x=>x.name===S.voice)||v.find(x=>x.lang==='pt-BR')||v.find(x=>x.lang&&x.lang.startsWith('pt'))||null;}
-function stopSpeak(){if(hasTTS)speechSynthesis.cancel();}
-function speak(text,force){
-  if(!hasTTS||(!S.speak&&!force)){setState('idle');return;}
-  stopSpeak();
+const MALE=/ant[oô]nio|daniel|felipe|donato|ricardo|humberto|f[aá]bio|j[uú]lio|jorge|masculin|\bmale\b/i;
+const FEMALE=/francisca|maria|luciana|thalita|camila|vit[oó]ria|yara|brenda|let[ií]cia|fernanda|feminin|female|google portugu[eê]s/i;
+const ptVoices=()=>hasTTS?speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLowerCase().startsWith('pt')):[];
+const isMale=v=>MALE.test(v.name)&&!FEMALE.test(v.name);
+function pickVoice(){
+  if(!hasTTS)return null;const all=speechSynthesis.getVoices();
+  const chosen=S.voice&&all.find(x=>x.name===S.voice);if(chosen)return chosen;
+  const pt=ptVoices(),br=pt.filter(v=>v.lang.toLowerCase()==='pt-br');
+  return br.find(isMale)||pt.find(isMale)||br.find(v=>!FEMALE.test(v.name))||br[0]||pt[0]||null;
+}
+let speakId=0,speakTimer=0,jawPulse=()=>{},audioLevel=null,actx=null,analyser=null,curAudio=null;
+function stopSpeak(){speakId++;clearTimeout(speakTimer);audioLevel=null;if(curAudio){try{curAudio.pause();}catch{}curAudio=null;}if(hasTTS)speechSynthesis.cancel();}
+const INSTALL_HINT='Se você usa Linux, instale as vozes do sistema com: sudo apt install speech-dispatcher espeak-ng (depois reinicie o navegador).';
+function voiceProblem(why){
+  const total=hasTTS?speechSynthesis.getVoices().length:0;
+  const msg=!hasTTS?'Este navegador não tem síntese de voz. Use o Chrome ou o Edge.'
+    :total===0?'O Zodam respondeu, mas o navegador não tem nenhuma voz instalada para falar. '+INSTALL_HINT
+    :'O Zodam respondeu, mas o navegador não conseguiu falar'+(why?' ('+why+')':'')+'. Em Configurações, escolha outra voz e use "Testar voz".';
+  const el=$('#vwarn');el.textContent=msg;el.hidden=false;
+}
+function speakBrowser(text,force,keepWarn){
+  if(!hasTTS||(!S.speak&&!force)){setState('idle');if(S.speak&&!hasTTS)voiceProblem();return;}
+  stopSpeak();if(!keepWarn)$('#vwarn').hidden=true;
   const sents=cleanSpeech(text).match(/[^.!?]+[.!?]*/g)||[];const chunks=[];let cur='';
   for(const s of sents){if((cur+s).length>170&&cur){chunks.push(cur);cur=s;}else cur+=s;}if(cur)chunks.push(cur);
   if(!chunks.length){setState('idle');return;}
-  const v=pickVoice();
-  chunks.forEach((c,i)=>{const u=new SpeechSynthesisUtterance(c.trim());u.lang='pt-BR';if(v)u.voice=v;u.rate=S.rate;u.pitch=S.pitch;
-    if(i===0)u.onstart=()=>setState('speak');
-    if(i===chunks.length-1){u.onend=()=>setState('idle');}
-    u.onerror=()=>setState('idle');speechSynthesis.speak(u);});
+  const my=speakId,v=pickVoice();let started=false;
+  // Se nada começar a falar em 3,5 s, libera o estado e avisa o motivo provável.
+  speakTimer=setTimeout(()=>{if(my===speakId&&!started){setState('idle');voiceProblem();}},3500);
+  // O Chrome pode ignorar um speak() logo após cancel(); a pequena espera evita isso.
+  setTimeout(()=>{
+    if(my!==speakId)return;
+    try{speechSynthesis.resume();}catch{}
+    chunks.forEach((c,i)=>{const u=new SpeechSynthesisUtterance(c.trim());u.lang='pt-BR';if(v)u.voice=v;u.rate=S.rate;u.pitch=S.pitch;
+      u.onboundary=()=>{if(my===speakId)jawPulse();};
+      u.onstart=()=>{if(my!==speakId)return;started=true;clearTimeout(speakTimer);if(i===0)setState('speak');};
+      if(i===chunks.length-1)u.onend=()=>{if(my===speakId)setState('idle');};
+      u.onerror=ev=>{if(my!==speakId||ev.error==='canceled'||ev.error==='interrupted')return;clearTimeout(speakTimer);setState('idle');voiceProblem(ev.error);};
+      speechSynthesis.speak(u);});
+  },80);
+}
+
+/* ---------- Zodam: boca. O maxilar (lábio inferior e barba) desce e um interior escuro aparece. ---------- */
+(function(){
+  const img=$('#zimg'),cv=$('#jaw'),fig=$('#fig'),box=$('#oracle');if(!img||!cv||!cv.getContext)return;
+  const ctx=cv.getContext('2d'),IW=1333,IH=1180,SX=550,SY=394,SW=260,SH=150,MX=680,MY=394,MAXD=11;
+  const off=document.createElement('canvas');off.width=SW;off.height=SH;const octx=off.getContext('2d');
+  const sm=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t)};
+  let ready=false;
+  function build(){
+    // pedaço do maxilar com bordas suaves (topo curto para não deixar rastro do lábio original)
+    const k=img.naturalWidth/IW;octx.clearRect(0,0,SW,SH);octx.drawImage(img,SX*k,SY*k,SW*k,SH*k,0,0,SW,SH);
+    const m=octx.getImageData(0,0,SW,SH),d=m.data;
+    for(let y=0;y<SH;y++)for(let x=0;x<SW;x++){
+      const a=Math.min(sm(x/26),sm((SW-1-x)/26),sm(y/3),sm((SH-1-y)/30));d[(y*SW+x)*4+3]=Math.round(a*255);}
+    octx.putImageData(m,0,0);ready=true;
+  }
+  function layout(){
+    const cw=box.clientWidth,ch=box.clientHeight;if(!cw||!ch)return;
+    const sc=Math.max(cw/IW,ch/IH);
+    const fw=IW*sc,fh=IH*sc;
+    fig.style.width=fw+'px';fig.style.height=fh+'px';fig.style.left=(cw-fw)*.5+'px';fig.style.top=(ch-fh)*.18+'px';
+  }
+  function draw(a){
+    ctx.clearRect(SX-12,SY-30,SW+24,SH+MAXD+60);
+    if(a<.02||!ready)return;
+    const dy=a*MAXD;
+    // interior da boca
+    const cy=MY+dy*.5,rx=33-a*3,ry=2+dy*.62;
+    const g=ctx.createRadialGradient(MX,cy,1,MX,cy,rx);g.addColorStop(0,'#01030f');g.addColorStop(.7,'#050c33');g.addColorStop(1,'#0d1f6e');
+    ctx.save();ctx.shadowColor='#050c33';ctx.shadowBlur=4;ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(MX,cy,rx,ry,0,0,Math.PI*2);ctx.fill();ctx.restore();
+    // maxilar descendo
+    ctx.drawImage(off,SX,SY+dy);
+  }
+  let amp=0,target=0,next=0;
+  jawPulse=()=>{target=.55+Math.random()*.45;next=performance.now()+110;};
+  function frame(t){
+    const speaking=document.body.dataset.ai==='speak';
+    if(typeof window.__mouthAmp==='number')target=window.__mouthAmp;
+    else if(audioLevel)target=audioLevel();
+    else if(speaking){if(t>next){const r=Math.random();target=r<.2?.04:.3+Math.random()*.7;next=t+85+Math.random()*115;}}
+    else target=0;
+    amp+=(target-amp)*(target>amp?.55:.35);window.__jawAmp=amp;draw(amp);requestAnimationFrame(frame);
+  }
+  const start=()=>{layout();build();requestAnimationFrame(frame);};
+  if(img.complete&&img.naturalWidth)start();else img.addEventListener('load',start);
+  if('ResizeObserver' in window)new ResizeObserver(layout).observe(box);else addEventListener('resize',layout);
+})();
+
+
+/* ---------- voz do Zodam via ElevenLabs (servidor), com boca sincronizada ao áudio ---------- */
+function ensureAudio(){
+  if(!actx){actx=new (window.AudioContext||window.webkitAudioContext)();analyser=actx.createAnalyser();analyser.fftSize=1024;analyser.connect(actx.destination);}
+  if(actx.state==='suspended')actx.resume();
+}
+function playBlob(blob,onStart){
+  return new Promise((ok,no)=>{
+    const url=URL.createObjectURL(blob),a=new Audio(url);curAudio=a;
+    a.preservesPitch=false;a.mozPreservesPitch=false;a.webkitPreservesPitch=false;a.playbackRate=S.deep;
+    try{ensureAudio();actx.createMediaElementSource(a).connect(analyser);}catch{}
+    const buf=new Uint8Array(1024);
+    audioLevel=()=>{if(!analyser)return 0;analyser.getByteTimeDomainData(buf);let t=0;for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128;t+=v*v;}
+      return Math.max(0,Math.min(1,(Math.sqrt(t/buf.length)-.015)*6));};
+    const done=()=>{URL.revokeObjectURL(url);ok();};
+    a.onplaying=onStart;a.onpause=done;a.onended=done;
+    a.onerror=()=>{URL.revokeObjectURL(url);no(new Error('áudio inválido'));};
+    a.play().catch(e=>{URL.revokeObjectURL(url);no(e);});
+  });
+}
+const fetchVoice=c=>fetch('/api/tts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:c})})
+  .then(async r=>{if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'HTTP '+r.status);}return r.blob();});
+function elevenFallback(reason,rest){
+  const el=$('#vwarn');el.textContent='A voz do ElevenLabs falhou ('+reason+'). Usando a voz do navegador.';el.hidden=false;
+  audioLevel=null;setState('idle');if(rest)speakBrowser(rest,true,true);
+}
+async function speakEleven(text){
+  stopSpeak();$('#vwarn').hidden=true;
+  const sents=cleanSpeech(text).match(/[^.!?]+[.!?]*/g)||[];const chunks=[];let cur='';
+  for(const t of sents){if((cur+t).length>230&&cur){chunks.push(cur.trim());cur=t;}else cur+=t;}if(cur.trim())chunks.push(cur.trim());
+  chunks.splice(4); // limita o gasto de créditos por resposta
+  if(!chunks.length){setState('idle');return;}
+  const my=speakId;let started=false;
+  speakTimer=setTimeout(()=>{if(my===speakId&&!started){stopSpeak();elevenFallback('demorou demais',chunks.join(' '));}},12000);
+  const get=c=>{const p=fetchVoice(c);p.catch(()=>{});return p;};
+  let next=get(chunks[0]);
+  for(let i=0;i<chunks.length;i++){
+    let blob;try{blob=await next;}catch(e){if(my!==speakId)return;clearTimeout(speakTimer);return elevenFallback(e.message,chunks.slice(i).join(' '));}
+    if(my!==speakId)return;
+    if(i+1<chunks.length)next=get(chunks[i+1]);
+    try{await playBlob(blob,()=>{if(my!==speakId)return;started=true;clearTimeout(speakTimer);setState('speak');});}
+    catch(e){if(my!==speakId)return;clearTimeout(speakTimer);return elevenFallback(e.message||'erro de áudio',chunks.slice(i).join(' '));}
+    if(my!==speakId)return;
+  }
+  clearTimeout(speakTimer);audioLevel=null;if(my===speakId)setState('idle');
+}
+function speak(text,force){
+  if(!S.speak&&!force){setState('idle');return;}
+  if(S.tts&&S.engine==='eleven')return speakEleven(text);
+  return speakBrowser(text,force);
 }
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function listen(){
@@ -576,12 +710,17 @@ async function ask(q){
 }
 function speakSummary(){const a=S.analysis;if(!a){showCap('A análise ainda está carregando.');return;}
   const r=a.risco_global,t=(a.resumo||'')+(r&&r.score!=null?` Risco global ${String(r.nivel).toLowerCase()}, ${r.score} de 100.`:'');showCap(t);
-  if(!S.speak){S.speak=true;store.set('speak',true);syncVoiceUI();}speak(t,true);}
-function syncVoiceUI(){$('#voiceBtn').setAttribute('aria-pressed',S.speak);$('#voiceBtn').textContent=S.speak?'Voz ativada':'Ativar voz';$('#cfSpeak').checked=S.speak;}
-function toggleVoice(){S.speak=!S.speak;store.set('speak',S.speak);syncVoiceUI();
-  if(S.speak){if(!hasTTS){showCap('Seu navegador não tem síntese de voz.');S.speak=false;syncVoiceUI();return;}speak('Zodam online. Pode perguntar.',true);}else{stopSpeak();setState('idle');}}
-function fillVoices(){if(!hasTTS)return;const sel=$('#cfVoice'),vs=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLowerCase().startsWith('pt'));
-  sel.innerHTML='<option value="">Automática (português do Brasil)</option>'+vs.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');sel.value=S.voice;}
+  if(!S.speak){S.speak=true;store.set('speakOn',true);syncVoiceUI();}speak(t,true);}
+function syncVoiceUI(){$('#voiceBtn').setAttribute('aria-pressed',S.speak);$('#voiceBtn').textContent=S.speak?'Voz ligada (silenciar)':'Ligar voz';$('#cfSpeak').checked=S.speak;}
+function toggleVoice(){S.speak=!S.speak;store.set('speakOn',S.speak);syncVoiceUI();
+  if(S.speak){if(!hasTTS){voiceProblem();S.speak=false;syncVoiceUI();return;}speak('Zodam online. Pode perguntar.',true);}else{stopSpeak();setState('idle');}}
+function fillVoices(){if(!hasTTS)return;const all=speechSynthesis.getVoices(),sel=$('#cfVoice'),vs=ptVoices();
+  sel.innerHTML='<option value="">Automática (prefere voz masculina em português)</option>'+vs.map(v=>`<option value="${esc(v.name)}">${isMale(v)?'♂ ':''}${esc(v.name)} (${esc(v.lang)})</option>`).join('');sel.value=S.voice;
+  const cur=pickVoice(),male=vs.some(isMale);
+  $('#cfVoices').textContent=all.length===0?'Nenhuma voz encontrada neste navegador. '+INSTALL_HINT
+    :vs.length===0?`${all.length} voz(es) encontradas, mas nenhuma em português. O Zodam falará com a voz padrão.`
+    :male?`Voz em uso: ${cur?cur.name:'padrão'}. ${vs.filter(isMale).length} voz(es) masculina(s) em português disponível(is).`
+    :`Voz em uso: ${cur?cur.name:'padrão'}. Este navegador só tem vozes femininas em português. No Microsoft Edge existe a voz masculina "Microsoft Antonio Online (Natural)", gratuita.`;}
 if(hasTTS)speechSynthesis.onvoiceschanged=fillVoices;
 
 /* ---------- navegação ---------- */
@@ -614,13 +753,16 @@ $('#sugs').innerHTML=SUG.map(s=>`<button type="button" class="chip">${esc(s)}</b
 $('#sugs').addEventListener('click',e=>{if(e.target.classList.contains('chip'))ask(e.target.textContent);});
 $('#cfSpeak').onchange=e=>{if(e.target.checked!==S.speak)toggleVoice();};
 $('#cfVoice').onchange=e=>{S.voice=e.target.value;store.set('voice',S.voice);};
-$('#cfRate').oninput=e=>{S.rate=+e.target.value;store.set('rate',S.rate);};
-$('#cfPitch').oninput=e=>{S.pitch=+e.target.value;store.set('pitch',S.pitch);};
+$('#cfRate').oninput=e=>{S.rate=+e.target.value;store.set('rate2',S.rate);};
+$('#cfPitch').oninput=e=>{S.pitch=+e.target.value;store.set('pitch2',S.pitch);};
 $('#cfTest').onclick=()=>speak('Zodam online. Esta é a minha voz.',true);
+$('#cfEngine').value=S.engine;$('#cfDeep').value=S.deep;
+$('#cfEngine').onchange=e=>{S.engine=e.target.value;store.set('engine',S.engine);};
+$('#cfDeep').oninput=e=>{S.deep=+e.target.value;store.set('deep',S.deep);if(curAudio)curAudio.playbackRate=S.deep;};
 $('#cfRate').value=S.rate;$('#cfPitch').value=S.pitch;syncVoiceUI();fillVoices();
 
 /* ---------- início ---------- */
-fetch('/api/health').then(r=>r.json()).then(j=>{S.provider=j.provider;$('#provider').textContent='IA: '+(j.ai?(ENG[j.provider]||j.provider):'modo local');
+fetch('/api/health').then(r=>r.json()).then(j=>{S.tts=!!j.tts;$('#cfTts').hidden=!S.tts;S.provider=j.provider;$('#provider').textContent='IA: '+(j.ai?(ENG[j.provider]||j.provider):'modo local');
   $('#provHelp').textContent=j.ai?'Converse por voz ou texto com o Zodam.':'Configure GEMINI_API_KEY (grátis) para a IA completa.';applyView();}).catch(()=>{$('#provider').textContent='IA: offline';});
 renderGauge(null);applyView();
 (async()=>{await Promise.all([loadMarkets(),loadNews(),loadWx()]);loadAnalysis(false);})();
